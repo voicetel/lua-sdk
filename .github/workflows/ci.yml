@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lua ${{ matrix.lua }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lua: ["5.2", "5.3"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Lua ${{ matrix.lua }}
+        uses: leafo/gh-actions-lua@v11
+        with:
+          luaVersion: ${{ matrix.lua }}
+
+      - name: Set up LuaRocks
+        uses: leafo/gh-actions-luarocks@v5
+
+      - name: Install dependencies
+        run: |
+          luarocks install lua-cjson
+          luarocks install busted
+          luarocks install luacov
+
+      - name: Run unit tests
+        run: busted --verbose
+
+      - name: Run tests with coverage
+        run: |
+          busted --coverage
+          lua -e 'require("luacov.runner").run_report()'
+          echo "---"
+          tail -40 luacov.report.out
+
+      - name: Upload coverage report
+        if: matrix.lua == '5.3'
+        uses: actions/upload-artifact@v4
+        with:
+          name: luacov-report
+          path: luacov.report.out
