@@ -1,0 +1,18 @@
+-- Busted configuration. Coverage uses LuaCov when --coverage is passed.
+return {
+    default = {
+        verbose  = true,
+        coverage = false,
+        output   = "utfTerminal",
+        ROOT     = { "spec" },
+        pattern  = "_spec",
+        ["helper"] = nil,
+    },
+    coverage = {
+        verbose  = true,
+        coverage = true,
+        output   = "utfTerminal",
+        ROOT     = { "spec" },
+        pattern  = "_spec",
+    },
+}

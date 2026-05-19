@@ -1,0 +1,17 @@
+-- LuaCov configuration. We only measure the SDK files (voicetel.*),
+-- never test or third-party code.
+return {
+    statsfile     = "luacov.stats.out",
+    reportfile    = "luacov.report.out",
+    include = {
+        "voicetel$",
+        "voicetel/.+",
+    },
+    exclude = {
+        "spec/",
+        "/spec/",
+        "/busted/",
+        "/luacov",
+        "init$",
+    },
+}
