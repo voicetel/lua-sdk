@@ -23,6 +23,28 @@ local DEFAULT_MAX_RETRIES = 2
 local DEFAULT_TIMEOUT     = 30
 local BACKOFF_BASE_SEC    = 0.5
 local BACKOFF_CAP_SEC     = 8
+local WRITE_METHODS       = { POST = true, PUT = true, PATCH = true }
+
+local function random_hex(n)
+    local f = io.open("/dev/urandom", "rb")
+    if f then
+        local bytes = f:read(n)
+        f:close()
+        if bytes and #bytes == n then
+            local parts = {}
+            for i = 1, #bytes do
+                parts[i] = string.format("%02x", string.byte(bytes, i))
+            end
+            return table.concat(parts)
+        end
+    end
+    math.randomseed(os.time())
+    local parts = {}
+    for i = 1, n do
+        parts[i] = string.format("%02x", math.random(0, 255))
+    end
+    return table.concat(parts)
+end
 
 local function url_encode(s)
     s = tostring(s)
@@ -107,6 +129,15 @@ end
 local function decode_response(resp)
     local status = resp.status or 0
     local raw = resp.body or ""
+    local encoding = http.get_header(resp, "Content-Encoding")
+    if encoding and string.find(string.lower(tostring(encoding)), "gzip", 1, true) then
+        local ok_zlib, zlib = pcall(require, "zlib")
+        if ok_zlib and zlib and zlib.inflate then
+            local inflate = zlib.inflate()
+            local inflated, ierr = inflate(raw)
+            if inflated then raw = inflated elseif ierr then raw = raw end
+        end
+    end
     local decoded, derr
     if #raw > 0 then
         decoded, derr = json.decode(raw)
@@ -201,14 +232,18 @@ function M:request(method, path, query, body, require_auth)
         end
     end
 
+    local idempotency_key = WRITE_METHODS[string.upper(method)] and random_hex(16) or nil
+
     local last_err
     for attempt = 0, self.max_retries do
         local headers = {
-            ["Accept"]     = "application/json",
-            ["User-Agent"] = self.user_agent,
+            ["Accept"]          = "application/json",
+            ["Accept-Encoding"] = "gzip",
+            ["User-Agent"]      = self.user_agent,
         }
         if raw_body then headers["Content-Type"] = "application/json" end
         if require_auth then headers["Authorization"] = "Bearer " .. self.api_key end
+        if idempotency_key then headers["Idempotency-Key"] = idempotency_key end
 
         local req = {
             method  = method,
