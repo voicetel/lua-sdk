@@ -1,0 +1,17 @@
+version: 2
+# LuaRocks is not a supported Dependabot ecosystem. We watch
+# GitHub Actions versions only; Lua dependency updates are
+# tracked manually via the rockspec.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
