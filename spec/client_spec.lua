@@ -4,7 +4,7 @@ local helpers  = require("spec.helpers")
 
 describe("voicetel module", function()
     it("exposes version + constants", function()
-        assert.are.equal("0.1.0",     voicetel.SDK_VERSION)
+        assert.are.equal("2.2.10",    voicetel.SDK_VERSION)
         assert.are.equal("v2.2.10",   voicetel.API_VERSION)
         assert.are.equal("https://api.voicetel.com", voicetel.DEFAULT_BASE_URL)
         assert.matches("voicetel%-lua", voicetel.DEFAULT_USER_AGENT)
