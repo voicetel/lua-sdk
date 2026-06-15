@@ -16,7 +16,7 @@ jobs:
         lua: ["5.2", "5.3"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Lua ${{ matrix.lua }}
         uses: leafo/gh-actions-lua@v13
