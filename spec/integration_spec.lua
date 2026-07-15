@@ -6,7 +6,7 @@ local username = os.getenv("VOICETEL_USERNAME")
 local password = os.getenv("VOICETEL_PASSWORD")
 local base_url = os.getenv("VOICETEL_BASE_URL") -- optional override
 
-if not (username and password) then
+if not (username and username ~= "" and password and password ~= "") then
     describe("integration", function()
         pending("skipped (set VOICETEL_USERNAME + VOICETEL_PASSWORD to enable)")
     end)
