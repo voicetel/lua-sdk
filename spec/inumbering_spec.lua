@@ -36,8 +36,8 @@ describe("inumbering", function()
         assert.are.equal("POST", m.calls[3].method)
     end)
 
-    -- v2.2.10 added local_routing_number + rate_center_tier to the response.
-    it("port_availability surfaces v2.2.10 fields", function()
+    -- local_routing_number + rate_center_tier ship alongside the older fields.
+    it("port_availability surfaces local_routing_number + rate_center_tier", function()
         local c, m = helpers.new_client({
             helpers.ok({
                 number              = "2015550123",

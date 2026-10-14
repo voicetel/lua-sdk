@@ -1,20 +1,20 @@
--- voicetel-2.2.10-1.rockspec
+-- voicetel-2.2.14-1.rockspec
 package = "voicetel"
-version = "2.2.10-1"
+version = "2.2.14-1"
 
 source = {
     url = "git+https://github.com/voicetel/lua-sdk.git",
-    tag = "v2.2.10",
+    tag = "v2.2.14",
 }
 
 description = {
-    summary  = "Official Lua SDK for the VoiceTel REST API (v2.2.10).",
+    summary  = "Official Lua SDK for the VoiceTel REST API (v2.2.14).",
     detailed = [[
 The official Lua client library for the VoiceTel REST API. Designed for
 FreeSWITCH mod_lua scripting on production switches, with a LuaSocket
 fallback so the same library works outside FreeSWITCH for tests and tools.
 
-Wraps all 10 resource groups and 73 operations of the v2.2.10 API:
+Wraps all 10 resource groups and 73 operations of the v2.2.14 API:
 Account, ACL, Authentication, e911, Gateways, iNumbering, Lookups,
 Messaging, Numbers, Support. Includes automatic 429/5xx retry with
 Retry-After honoring, structured error types, and the standard

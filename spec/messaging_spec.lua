@@ -46,6 +46,56 @@ describe("messaging", function()
         assert.matches("/v2.2/messaging/campaigns$", m.calls[3].url)
     end)
 
+    it("campaign_status surfaces the dca carrier-review table", function()
+        local c = helpers.new_client({
+            helpers.ok({
+                campaigns = {
+                    {
+                        id      = "CAMP002",
+                        status  = "CAMPAIGN_DCA_REJECTED",
+                        numbers = { "2015550123" },
+                        dca = {
+                            electionComplete = true,
+                            electedCarriers  = { "AT&T", "T-Mobile", "Verizon Wireless" },
+                            carriers = {
+                                {
+                                    carrier   = "T-Mobile",
+                                    status    = "REJECTED",
+                                    detail    = "Campaign rejected",
+                                    updatedAt = "2026-10-01T00:00:00Z",
+                                },
+                                {
+                                    carrier   = "US Cellular",
+                                    status    = "ACTIVE",
+                                    detail    = "Campaign approved",
+                                    updatedAt = "2026-09-30T00:00:00Z",
+                                },
+                            },
+                        },
+                    },
+                    {
+                        id      = "ZZZZZZZ",
+                        status  = "CAMPAIGN_INVALID_ID",
+                        numbers = {},
+                    },
+                },
+            }),
+        })
+        local r, err = c.messaging:campaign_status()
+        assert.is_nil(err)
+        local first = r.campaigns[1]
+        assert.are.equal("CAMPAIGN_DCA_REJECTED", first.status)
+        assert.is_true(first.dca.electionComplete)
+        assert.are.same({ "AT&T", "T-Mobile", "Verizon Wireless" }, first.dca.electedCarriers)
+        assert.are.equal(2, #first.dca.carriers)
+        assert.are.equal("T-Mobile", first.dca.carriers[1].carrier)
+        assert.are.equal("REJECTED", first.dca.carriers[1].status)
+        assert.are.equal("Campaign rejected", first.dca.carriers[1].detail)
+        assert.are.equal("US Cellular", first.dca.carriers[2].carrier)
+        assert.are.equal("ACTIVE", first.dca.carriers[2].status)
+        assert.is_nil(r.campaigns[2].dca)
+    end)
+
     it("numbers_state encodes the numbers list", function()
         local c, m = helpers.new_client({ helpers.ok({ numbers = {} }) })
         c.messaging:numbers_state({ "2015550123", "2015555678" })

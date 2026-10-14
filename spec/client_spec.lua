@@ -4,11 +4,15 @@ local helpers  = require("spec.helpers")
 
 describe("voicetel module", function()
     it("exposes version + constants", function()
-        assert.are.equal("2.2.10",    voicetel.SDK_VERSION)
-        assert.are.equal("v2.2.10",   voicetel.API_VERSION)
+        assert.are.equal("2.2.14",   voicetel.SDK_VERSION)
+        assert.are.equal("v2.2.14",  voicetel.API_VERSION)
         assert.are.equal("https://api.voicetel.com", voicetel.DEFAULT_BASE_URL)
         assert.matches("voicetel%-lua", voicetel.DEFAULT_USER_AGENT)
-        assert.are.equal(1, voicetel.AUTH_TYPE_IP_AUTH)
+        -- 0=Digest, 1=Lax (Digest | IP), 2=IP, 3=Strict (Digest + IP).
+        assert.are.equal(0, voicetel.AUTH_TYPE_DIGEST)
+        assert.are.equal(1, voicetel.AUTH_TYPE_LAX)
+        assert.are.equal(2, voicetel.AUTH_TYPE_IP)
+        assert.are.equal(3, voicetel.AUTH_TYPE_STRICT)
     end)
 
     it("builds a client with all 10 resource fields", function()

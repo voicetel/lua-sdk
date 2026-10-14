@@ -18,7 +18,10 @@ function M:coverage(query)
 end
 
 -- order purchases new TNs.
--- POST /v2.2/orders   body: { numbers = { "2015550123", { number = "...", route = 4 } } }
+--   body: { numbers = { "2015550123", { number = "...", route = 4 } } }
+-- Response data: { orderId, amountCharged (amount deducted from the account
+--   balance), numbersOrdered, failed }
+-- POST /v2.2/orders
 function M:order(body)
     return self._t:request("POST", "/v2.2/orders", nil, body or {}, true)
 end
@@ -44,7 +47,7 @@ end
 -- port_availability checks whether a TN can be ported in.
 -- GET /v2.2/ports/availability/{number}
 --
--- Response data (v2.2.10): { number, portable, losing_carrier, reason,
+-- Response data (v2.2.14): { number, portable, losing_carrier, reason,
 --   local_routing_number, rate_center_tier }
 function M:port_availability(number)
     return self._t:request("GET", "/v2.2/ports/availability/" .. tostring(number), nil, nil, true)

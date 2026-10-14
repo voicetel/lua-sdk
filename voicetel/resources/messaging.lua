@@ -44,18 +44,41 @@ function M:create_brand(body)
 end
 
 -- campaign_status returns the current 10DLC campaign statuses.
+-- Each item is { id, status, numbers, dca }. `status` is one of:
+--   CAMPAIGN_DCA_COMPLETE (ready: carrier review finished, numbers assigned),
+--   CAMPAIGN_DCA_COMPLETE_NO_NUMBERS_ASSIGNED,
+--   CAMPAIGN_PENDING_DCA (active at the campaign registry, but carrier (DCA)
+--     review is not finished yet; numbers cannot be enabled until it is),
+--   CAMPAIGN_DCA_REJECTED (a carrier's DCA rejected or suspended the
+--     campaign; see dca.carriers),
+--   CAMPAIGN_<registry status>, or CAMPAIGN_INVALID_ID.
+-- `dca` is the carrier (DCA) review progress, nil for CAMPAIGN_INVALID_ID:
+--   { electionComplete = every carrier has a DCA assigned to review the
+--       campaign,
+--     electedCarriers  = carriers with a DCA assigned so far (nil when
+--       unavailable),
+--     carriers         = { { carrier, status, detail, updatedAt } } — each
+--       carrier DCA decision received, latest per carrier. status is ACTIVE,
+--       REJECTED, SUSPENDED, UNSUNSPENDED or TERMINATED; detail is the
+--       reviewer's note, as given. }
 -- GET /v2.2/messaging/campaigns
 function M:campaign_status()
     return self._t:request("GET", "/v2.2/messaging/campaigns", nil, nil, true)
 end
 
--- create_campaign registers a 10DLC campaign with the carrier.
+-- create_campaign registers a 10DLC campaign with the carrier. The body is
+-- passed through to the campaign registration service; campaignClassName
+-- (from the campaign registry) and campaignStartDate (today) are
+-- auto-populated if omitted.
 -- POST /v2.2/messaging/campaigns
 function M:create_campaign(body)
     return self._t:request("POST", "/v2.2/messaging/campaigns", nil, body or {}, true)
 end
 
 -- numbers_state returns the messaging state for many numbers at once.
+-- The per-number shape matches numbers:get_messaging — including
+-- network ("A"/"B"/"C") and the optional `pending` asynchronous (path C)
+-- enablement job.
 -- GET /v2.2/numbers/messaging   query: { numbers = "2015550123,2015555678" }
 function M:numbers_state(numbers)
     local q = {}

@@ -1,4 +1,4 @@
--- voicetel — official Lua SDK for the VoiceTel REST API (v2.2.10).
+-- voicetel — official Lua SDK for the VoiceTel REST API (v2.2.14).
 --
 -- Designed to run inside FreeSWITCH's mod_lua (Lua 5.2). HTTP transport is
 -- pluggable: by default we use `freeswitch.Curl` when available and fall
@@ -65,10 +65,11 @@ M.KIND_RATE_LIMIT        = errors.KIND_RATE_LIMIT
 M.KIND_SERVER            = errors.KIND_SERVER
 
 -- Authentication mode constants for client.authentication:update.
-M.AUTH_TYPE_DIGEST        = Authentication.AUTH_TYPE_DIGEST
-M.AUTH_TYPE_IP_AUTH       = Authentication.AUTH_TYPE_IP_AUTH
-M.AUTH_TYPE_DIGEST_OR_IP  = Authentication.AUTH_TYPE_DIGEST_OR_IP
-M.AUTH_TYPE_DIGEST_AND_IP = Authentication.AUTH_TYPE_DIGEST_AND_IP
+-- 0=Digest, 1=Lax (Digest | IP), 2=IP, 3=Strict (Digest + IP).
+M.AUTH_TYPE_DIGEST = Authentication.AUTH_TYPE_DIGEST
+M.AUTH_TYPE_LAX    = Authentication.AUTH_TYPE_LAX
+M.AUTH_TYPE_IP     = Authentication.AUTH_TYPE_IP
+M.AUTH_TYPE_STRICT = Authentication.AUTH_TYPE_STRICT
 
 -- Expose for advanced use cases / tests.
 M.errors    = errors

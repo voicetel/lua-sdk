@@ -119,18 +119,51 @@ function M:remove_sms(number)
 end
 
 -- get_messaging returns the messaging state for one TN.
+--   { enabled, carrier, routeIn, resource,
+--     network  = "A" | "B" | "C" | nil,
+--     campaign = { id, network, status, upstreamCnpId },
+--     pending  = { campaignId, state, message, createdAt, updatedAt } }
+-- `pending` carries the asynchronous (path C) enablement job while it is in
+-- flight: state moves queued -> hosting -> assigning -> routing -> done, or
+-- failed (see message). The number keeps its previous routing until done.
 -- GET /v2.2/numbers/{number}/messaging
 function M:get_messaging(number)
     return self._t:request("GET", "/v2.2/numbers/" .. tostring(number) .. "/messaging", nil, nil, true)
 end
 
 -- patch_messaging updates inbound/outbound routing for one TN.
+--   body: { routeIn  = <numbers_sms row id; 0 to detach>,
+--           routeOut = <outbound carrier id; 0 = outbound off> }
+-- At least one of routeIn/routeOut must be present. To move a number to
+-- another campaign or messaging path use assign_campaign instead.
 -- PATCH /v2.2/numbers/{number}/messaging
 function M:patch_messaging(number, body)
     return self._t:request("PATCH", "/v2.2/numbers/" .. tostring(number) .. "/messaging", nil, body or {}, true)
 end
 
 -- assign_campaign binds a 10DLC campaign to a TN.
+--   body: { campaignId = "ABC1234" }
+--
+-- Response data:
+--   status     = "enabled" (bound now, path B) | "already" (the number was
+--                already bound to this campaign; records reconciled, no new
+--                order) | "pending" (accepted and being provisioned on path
+--                C — poll get_messaging's `pending` job until its state is
+--                done or failed)
+--   alreadyAssigned     = true when already bound (see "already")
+--   orderId             = network order id for a path-B assignment; nil for
+--                         path C (see job), idempotent no-ops, and
+--                         assignments confirmed without a new order
+--   message             = human-readable note for a pending enablement
+--   warning             = non-fatal condition detected during the assignment
+--   job                 = { campaignId, state, message, createdAt, updatedAt }
+--                         for a pending (path C) enablement; nil otherwise
+--   network             = "B" | "C" (path B is assigned synchronously; path
+--                         C is provisioned asynchronously, status "pending")
+--   previousNetwork     = "A" | "B" | nil (path before this call)
+--   carrier             = outbound carrier id once enabled (19 = path B,
+--                         1 = path C)
+--   upstreamCnpId       = CAMP003 (path B) | BANDW (path C)
 -- PUT /v2.2/numbers/{number}/messaging-campaign   body: { campaignId = "ABC1234" }
 function M:assign_campaign(number, body)
     return self._t:request("PUT",
@@ -154,6 +187,11 @@ function M:bulk_unassign_campaign(numbers)
 end
 
 -- set_port_out_pin sets the port-out PIN for a TN.
+--   body: { pin = "1234" }   (four digits)
+-- A PIN is locked for 30 days once set. The response carries `changed`
+-- (true if this request set the PIN; false if the number already had one,
+-- in which case the existing value is returned unchanged) and `portOutPin`
+-- (the value now on file — just set, or the pre-existing locked value).
 -- PATCH /v2.2/numbers/{number}/port-out-pin
 function M:set_port_out_pin(number, body)
     return self._t:request("PATCH",

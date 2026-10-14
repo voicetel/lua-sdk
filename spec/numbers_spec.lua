@@ -72,10 +72,87 @@ describe("numbers", function()
     end)
 
     it("messaging state get + patch", function()
-        local c, m = helpers.new_client({ ok({}), ok({ updated = { "routeIn" } }) })
-        c.numbers:get_messaging("2015550123")
+        local c, m = helpers.new_client({
+            ok({
+                enabled  = true,
+                carrier  = 1,
+                network  = "C",
+                campaign = { id = "CAMP002", network = "C", status = "ACTIVE", upstreamCnpId = "BANDW" },
+                pending  = {
+                    campaignId = "CAMP002",
+                    state      = "assigning",
+                    message    = "assigning number",
+                    createdAt  = "2026-10-13T16:00:00Z",
+                    updatedAt  = "2026-10-13T16:05:00Z",
+                },
+            }),
+            ok({ updated = { "routeIn" } }),
+        })
+        local r = c.numbers:get_messaging("2015550123")
         c.numbers:patch_messaging("2015550123", { routeIn = 5 })
+        assert.are.equal("C", r.network)
+        assert.are.equal("CAMP002", r.pending.campaignId)
+        assert.are.equal("assigning", r.pending.state)
+        assert.are.equal("assigning number", r.pending.message)
         assert.are.equal("PATCH", m.calls[2].method)
+    end)
+
+    it("assign campaign (path C) surfaces status/job/warning", function()
+        local c = helpers.new_client({
+            ok({
+                number     = "2015550123",
+                campaignId = "CAMP002",
+                status     = "pending",
+                network    = "C",
+                carrier    = 1,
+                upstreamCnpId = "BANDW",
+                alreadyAssigned = false,
+                previousNetworkCleared = false,
+                message = "accepted; provisioning on path C",
+                job = {
+                    campaignId = "CAMP002",
+                    state      = "queued",
+                    message    = "queued",
+                    createdAt  = "2026-10-13T16:00:00Z",
+                    updatedAt  = "2026-10-13T16:00:01Z",
+                },
+            }),
+        })
+        local r, err = c.numbers:assign_campaign("2015550123", { campaignId = "CAMP002" })
+        assert.is_nil(err)
+        assert.are.equal("pending", r.status)
+        assert.is_false(r.alreadyAssigned)
+        assert.is_nil(r.orderId)
+        assert.are.equal("accepted; provisioning on path C", r.message)
+        assert.are.equal("queued", r.job.state)
+        assert.are.equal("CAMP002", r.job.campaignId)
+    end)
+
+    it("assign campaign (path B) surfaces status/orderId/warning", function()
+        local c = helpers.new_client({
+            ok({
+                number     = "2015550123",
+                campaignId = "ABC1234",
+                status     = "enabled",
+                network    = "B",
+                carrier    = 19,
+                upstreamCnpId = "CAMP003",
+                alreadyAssigned = false,
+                orderId    = "1029384756",
+                previousNetwork = "A",
+                previousNetworkCleared = true,
+                warning = "stale registration on path A; removal requested",
+            }),
+        })
+        local r, err = c.numbers:assign_campaign("2015550123", { campaignId = "ABC1234" })
+        assert.is_nil(err)
+        assert.are.equal("enabled", r.status)
+        assert.are.equal("1029384756", r.orderId)
+        assert.are.equal("B", r.network)
+        assert.are.equal("A", r.previousNetwork)
+        assert.is_true(r.previousNetworkCleared)
+        assert.is_nil(r.job)
+        assert.are.equal("stale registration on path A; removal requested", r.warning)
     end)
 
     it("assign / unassign / bulk_unassign campaign", function()
@@ -101,11 +178,26 @@ describe("numbers", function()
         assert.are.same({ "2015550123", "2015555678" }, b.numbers)
     end)
 
-    it("set_port_out_pin", function()
-        local c, m = helpers.new_client({ ok({ portOutPin = "1234" }) })
-        c.numbers:set_port_out_pin("2015550123", { pin = "1234" })
+    it("set_port_out_pin surfaces changed/portOutPin", function()
+        local c, m = helpers.new_client({
+            ok({ number = "2015550123", portOutPin = "1234", changed = true }),
+        })
+        local r, err = c.numbers:set_port_out_pin("2015550123", { pin = "1234" })
+        assert.is_nil(err)
+        assert.is_true(r.changed)
+        assert.are.equal("1234", r.portOutPin)
         assert.are.equal("PATCH", m.calls[1].method)
         assert.matches("/port%-out%-pin$", m.calls[1].url)
+    end)
+
+    it("set_port_out_pin reports changed=false for an already-locked PIN", function()
+        local c = helpers.new_client({
+            ok({ number = "2015550123", portOutPin = "9999", changed = false }),
+        })
+        local r, err = c.numbers:set_port_out_pin("2015550123", { pin = "1234" })
+        assert.is_nil(err)
+        assert.is_false(r.changed)
+        assert.are.equal("9999", r.portOutPin)
     end)
 
     it("error path", function()

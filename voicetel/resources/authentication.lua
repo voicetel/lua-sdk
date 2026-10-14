@@ -4,10 +4,11 @@ local M = {}
 M.__index = M
 
 -- AuthType constants — surfaced on the top-level module for convenience.
-M.AUTH_TYPE_DIGEST        = 0
-M.AUTH_TYPE_IP_AUTH       = 1
-M.AUTH_TYPE_DIGEST_OR_IP  = 2
-M.AUTH_TYPE_DIGEST_AND_IP = 3
+-- 0=Digest, 1=Lax (Digest | IP), 2=IP, 3=Strict (Digest + IP).
+M.AUTH_TYPE_DIGEST = 0
+M.AUTH_TYPE_LAX    = 1
+M.AUTH_TYPE_IP     = 2
+M.AUTH_TYPE_STRICT = 3
 
 function M.new(transport) return setmetatable({ _t = transport }, M) end
 
