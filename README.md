@@ -2,7 +2,7 @@
 
 The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/api/v2.2/) — built for **FreeSWITCH `mod_lua`** so you can place CNAM dips, route by LRN, send SMS, and provision e911 directly from your dialplan, with a `socket.http` fallback for offline tests and one-off scripts.
 
-![Version](https://img.shields.io/badge/version-2.2.14-blue)
+![Version](https://img.shields.io/badge/version-2.2.15-blue)
 ![Lua](https://img.shields.io/badge/lua-5.2%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)
@@ -42,7 +42,7 @@ The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/ap
 - **Account** — profile, sub-accounts, CDRs, credits, payments, MRC, registration, password recovery.
 - **e911** — record provisioning, address validation, lookup, removal.
 - **Gateways** — list, create, update, delete, view bound numbers.
-- **Messaging** — SMS & MMS sending, message history, 10DLC brand and campaign registration, per-number messaging state.
+- **Messaging** — SMS & MMS sending, message history, 10DLC brand and campaign registration, per-number messaging state, and messaging health (account overview, per-number live check, spam-blocked samples, alert-email setting).
 - **Lookups** — CNAM and LRN dips.
 - **iNumbering** — inventory search, coverage queries, number orders, port-in submissions, port-out availability (with the v2.2.14 `local_routing_number` / `rate_center_tier` fields).
 - **Support** — ticket create / read / update / delete, threaded messages, replies.
@@ -203,7 +203,7 @@ local client = voicetel.new({ api_key = os.getenv("VOICETEL_API_KEY") })
 | Numbers          | `client.numbers`        | `client.numbers:assign_campaign("2015550123", { campaignId = "ABC1234" })` |
 | Support          | `client.support`        | `client.support:create({ subject = "...", message = "..." })`    |
 
-73 operations in total — every endpoint in the v2.2.14 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
+78 operations in total — every endpoint in the v2.2.15 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
 
 A few spec quirks worth knowing about:
 
@@ -212,6 +212,7 @@ A few spec quirks worth knowing about:
 - **LIDB** is spelled `lidb` everywhere in this SDK (the early v2.2 spec had a `libd` typo; the fix is reflected here).
 - **`assign_campaign`** returns `status` = `"enabled"` (path B, bound synchronously), `"already"` (the number was already bound to this campaign — idempotent no-op), or `"pending"` (path C, provisioned asynchronously — poll `client.numbers:get_messaging(number)` and read its `pending` job until `state` is `done` or `failed`). The `job` field on the response carries the same table.
 - **`campaign_status`** items include a `dca` table with carrier (DCA) review progress: `electionComplete`, `electedCarriers`, and `carriers` (`{ carrier, status, detail, updatedAt }`, latest decision per carrier). `dca` is nil for `CAMPAIGN_INVALID_ID`.
+- **Messaging health** (`health`, `health_alerts`, `set_health_alerts`, `health_check`, `health_samples`) has no response schema in the spec, so each returns the decoded JSON table verbatim — index it directly (e.g. `client.messaging:health().summary`). `health_check` is limited to 30 checks per hour per account.
 - **`port_availability`** returns the v2.2.14 fields `local_routing_number` and `rate_center_tier` in addition to the older `number`, `portable`, `losing_carrier`, `reason`.
 - **DELETE** endpoints generally return 204 No Content — those methods return `true` on success. Three exceptions return 200 with a body and return that data: `client.acl:remove`, `client.numbers:unassign_campaign`, and `client.numbers:bulk_unassign_campaign`.
 
@@ -264,7 +265,7 @@ Predicate helpers: `voicetel.is_rate_limit`, `voicetel.is_not_found`, `voicetel.
 
 These six endpoints are limited to **6 requests per hour per IP**:
 
-- `account/info` — `client.account:get()`
+- `account` — `client.account:get()`
 - `account/cdr` — `client.account:cdr(start, end_ts)`
 - `account/recurring-charges` — `client.account:recurring_charges()`
 - `account/payments` — `client.account:payments()`

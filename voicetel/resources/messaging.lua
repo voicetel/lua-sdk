@@ -88,4 +88,54 @@ function M:numbers_state(numbers)
     return self._t:request("GET", "/v2.2/numbers/messaging", q, nil, true)
 end
 
+-- health returns the account-wide messaging health overview — the same view as
+-- the portal Messaging tab: summary counts (numbers, messaging on, healthy,
+-- needing attention, in progress), campaigns with carrier-review progress,
+-- numbers needing attention (each with a plain-language title, detail and the
+-- actions that fix it: assign, disable, samples), 14 days of delivery counts
+-- (delivered, failed, blocked as spam, refused because the number is not
+-- enabled), and the alert-email setting. Updated hourly. Fix a number with
+-- numbers:set_messaging_campaign / numbers:remove_messaging_campaign.
+-- The spec defines no response schema, so the decoded JSON is returned as-is.
+-- GET /v2.2/messaging/health
+function M:health()
+    return self._t:request("GET", "/v2.2/messaging/health", nil, nil, true)
+end
+
+-- health_alerts returns the alert-email setting: whether new messaging problems
+-- are emailed to the account. The spec defines no response schema, so the
+-- decoded JSON is returned as-is.
+-- GET /v2.2/messaging/health/alerts
+function M:health_alerts()
+    return self._t:request("GET", "/v2.2/messaging/health/alerts", nil, nil, true)
+end
+
+-- set_health_alerts turns alert emails on or off. When enabled, the account is
+-- emailed as new messaging problems are found (at most one digest about every
+-- 20 hours). The spec defines no response schema, so the decoded JSON is
+-- returned as-is.
+-- PUT /v2.2/messaging/health/alerts   body: { enabled = true|false }
+function M:set_health_alerts(enabled)
+    return self._t:request("PUT", "/v2.2/messaging/health/alerts", nil, { enabled = enabled }, true)
+end
+
+-- health_check performs a live check of one number: in service, messaging
+-- enabled, campaign approved, assigned to the campaign by the messaging
+-- provider, delivery failures in the last 24 hours, enablement in progress.
+-- Limited to 30 checks per hour per account. The spec defines no response
+-- schema, so the decoded JSON is returned as-is.
+-- POST /v2.2/messaging/health/check   body: { number = "2125550123" }
+function M:health_check(number)
+    return self._t:request("POST", "/v2.2/messaging/health/check", nil, { number = number }, true)
+end
+
+-- health_samples returns up to 3 recent outbound messages from the number that
+-- carriers blocked as spam (time, masked recipient, text, reason), to help
+-- review content. The spec defines no response schema, so the decoded JSON is
+-- returned as-is.
+-- GET /v2.2/messaging/health/samples   query: { number = "2125550123" }
+function M:health_samples(number)
+    return self._t:request("GET", "/v2.2/messaging/health/samples", { number = number }, nil, true)
+end
+
 return M

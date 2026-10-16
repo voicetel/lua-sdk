@@ -108,6 +108,47 @@ describe("messaging", function()
         assert.are.equal("https://api.voicetel.com/v2.2/numbers/messaging", m.calls[1].url)
     end)
 
+    -- v2.2.15: messaging-health endpoints have no response schema in the spec,
+    -- so the decoded JSON table is returned verbatim; bodies/query are still shaped.
+    it("health endpoints return the decoded payload verbatim", function()
+        local c, m = helpers.new_client({
+            helpers.ok({ summary = { numbers = 3, healthy = 2 } }),
+            helpers.ok({ enabled = true }),
+            helpers.ok({ enabled = false }),
+            helpers.ok({ number = "2125550123", inService = true }),
+            helpers.ok({ samples = { { reason = "spam" } } }),
+        })
+
+        local health, e1 = c.messaging:health()
+        assert.is_nil(e1)
+        assert.are.equal(3, health.summary.numbers)
+        assert.are.equal("GET", m.calls[1].method)
+        assert.matches("/v2.2/messaging/health$", m.calls[1].url)
+
+        local alerts, e2 = c.messaging:health_alerts()
+        assert.is_nil(e2)
+        assert.is_true(alerts.enabled)
+        assert.matches("/v2.2/messaging/health/alerts$", m.calls[2].url)
+
+        local off, e3 = c.messaging:set_health_alerts(false)
+        assert.is_nil(e3)
+        assert.is_false(off.enabled)
+        assert.are.equal("PUT", m.calls[3].method)
+        assert.is_false(helpers.decode_body(m, 3).enabled)
+
+        local check, e4 = c.messaging:health_check("2125550123")
+        assert.is_nil(e4)
+        assert.is_true(check.inService)
+        assert.are.equal("POST", m.calls[4].method)
+        assert.are.equal("2125550123", helpers.decode_body(m, 4).number)
+
+        local samples, e5 = c.messaging:health_samples("2125550123")
+        assert.is_nil(e5)
+        assert.are.equal("spam", samples.samples[1].reason)
+        assert.matches("/v2.2/messaging/health/samples", m.calls[5].url)
+        assert.matches("number=2015550123", m.calls[5].url)
+    end)
+
     it("error path on send", function()
         local c = helpers.new_client({ helpers.err(403, "not allowed") })
         local _, err = c.messaging:send({ fromNumber = "a", toNumber = "b", text = "hi" })

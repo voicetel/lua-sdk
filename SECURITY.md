@@ -33,7 +33,7 @@ consumer side:
 - Do not log the API key or the `Authorization` header — the 32-hex
   key is the only credential and grants full tenant access. Treat it
   as a production password.
-- Fetch the key once via `POST /v2.2/account/apikey` (the only
+- Fetch the key once via `POST /v2.2/account/api-key` (the only
   endpoint that does not require an `Authorization` header) and store
   the result in a secret manager or environment, never in source
   control. Re-fetch after any password change; the prior key is
@@ -45,8 +45,8 @@ consumer side:
 - Retries on 429 / 5xx replay the same request body, but every
   POST / PUT / PATCH carries an `Idempotency-Key` header so the
   server can collapse duplicates. Do not strip it.
-- Rate-limited endpoints (`account/info`, `account/mrc`, `account/cdr`,
-  `account/apikey`) are capped at 6 requests per hour per IP. Sustained
+- Rate-limited endpoints (`account`, `account/recurring-charges`,
+  `account/cdr`, `account/api-key`) are capped at 6 requests per hour per IP. Sustained
   abuse is rejected at the edge.
 
 Out of scope: vulnerabilities in the `voicetel` LuaRocks package

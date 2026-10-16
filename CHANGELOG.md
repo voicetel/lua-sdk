@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.2.15 — 2026-10-15
+
+Sync with VoiceTel API spec v2.2.15.
+
+### Messaging
+
+- New **messaging health** surface (the same view as the portal Messaging tab).
+  The spec defines no response schema for these endpoints, so each method returns
+  the decoded JSON table verbatim; only the request body/query is shaped.
+  - `GET /v2.2/messaging/health` → `messaging:health()` — account-wide overview:
+    summary counts, campaigns with carrier-review progress, numbers needing
+    attention (with fix-it actions), 14 days of delivery counts, and the
+    alert-email setting. Updated hourly.
+  - `GET /v2.2/messaging/health/alerts` → `messaging:health_alerts()` — whether
+    new messaging problems are emailed to the account.
+  - `PUT /v2.2/messaging/health/alerts` → `messaging:set_health_alerts(enabled)`
+    — turn alert emails on or off (at most one digest about every 20 hours).
+  - `POST /v2.2/messaging/health/check` → `messaging:health_check(number)` — live
+    check of one number (in service, messaging enabled, campaign approved,
+    assigned by the provider, delivery failures in the last 24h, enablement in
+    progress). Limited to 30 checks per hour per account.
+  - `GET /v2.2/messaging/health/samples` → `messaging:health_samples(number)` — up
+    to 3 recent outbound messages from the number that carriers blocked as spam.
+
 ## 2.2.14 — 2026-10-14
 
 Sync with VoiceTel API spec v2.2.14.
