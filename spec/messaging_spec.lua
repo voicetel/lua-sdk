@@ -146,7 +146,7 @@ describe("messaging", function()
         assert.is_nil(e5)
         assert.are.equal("spam", samples.samples[1].reason)
         assert.matches("/v2.2/messaging/health/samples", m.calls[5].url)
-        assert.matches("number=2015550123", m.calls[5].url)
+        assert.matches("number=2125550123", m.calls[5].url)
     end)
 
     it("error path on send", function()
