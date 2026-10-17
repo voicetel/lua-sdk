@@ -1,4 +1,4 @@
--- voicetel — official Lua SDK for the VoiceTel REST API (v2.2.16).
+-- voicetel — official Lua SDK for the VoiceTel REST API (v2.2.17).
 --
 -- Designed to run inside FreeSWITCH's mod_lua (Lua 5.2). HTTP transport is
 -- pluggable: by default we use `freeswitch.Curl` when available and fall

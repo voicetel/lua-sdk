@@ -2,7 +2,7 @@
 
 The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/api/v2.2/) — built for **FreeSWITCH `mod_lua`** so you can place CNAM dips, route by LRN, send SMS, and provision e911 directly from your dialplan, with a `socket.http` fallback for offline tests and one-off scripts.
 
-![Version](https://img.shields.io/badge/version-2.2.16-blue)
+![Version](https://img.shields.io/badge/version-2.2.17-blue)
 ![Lua](https://img.shields.io/badge/lua-5.2%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Coverage](https://img.shields.io/badge/coverage-84%25-brightgreen)
@@ -203,7 +203,7 @@ local client = voicetel.new({ api_key = os.getenv("VOICETEL_API_KEY") })
 | Numbers          | `client.numbers`        | `client.numbers:assign_campaign("2015550123", { campaignId = "ABC1234" })` |
 | Support          | `client.support`        | `client.support:create({ subject = "...", message = "..." })`    |
 
-79 operations in total — every endpoint in the v2.2.16 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
+79 operations in total — every endpoint in the v2.2.17 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
 
 A few spec quirks worth knowing about:
 

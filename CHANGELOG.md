@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.17 — 2026-10-17
+
+Spec v2.2.17 sync.
+
+### Fixed
+- DID `route` fields are documented as the global route enum (1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE); examples that showed invalid values (0, 1000) corrected.
+- Example data sanitized suite-wide (fiction-reserved 555-01xx phone numbers; no real names/addresses/campaign IDs); no API behavior change.
+
 ## 2.2.16 — 2026-10-17
 
 Spec-conformance release tracking VoiceTel API spec v2.2.16. **Contains breaking changes** — request shapes now match the documented wire format.

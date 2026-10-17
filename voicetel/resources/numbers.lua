@@ -22,6 +22,8 @@ end
 
 -- add attaches a TN to the account.
 -- POST /v2.2/numbers   body: { number = "...", route = 4 }
+-- `route` is the global route type: 1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID
+-- (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
 function M:add(body)
     return self._t:request("POST", "/v2.2/numbers", nil, body or {}, true)
 end
@@ -40,6 +42,8 @@ end
 
 -- move transfers a TN to another account on the same org.
 -- PATCH /v2.2/numbers/{number}   body: { accountId = 1000000002, route = 4 }
+-- `route` is the global route type on the destination account: 1 USER,
+-- 2 T30, 3 VOICE_BRIDGE, 4 DID (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
 function M:move(number, body)
     return self._t:request("PATCH", "/v2.2/numbers/" .. url_encode(number), nil, body or {}, true)
 end
@@ -51,7 +55,9 @@ function M:release(number)
 end
 
 -- set_route updates a TN's outbound route.
--- PUT /v2.2/numbers/{number}/route
+-- PUT /v2.2/numbers/{number}/route   body: { route = 4 }
+-- `route` is the global route type: 1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID
+-- (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
 function M:set_route(number, body)
     return self._t:request("PUT", "/v2.2/numbers/" .. url_encode(number) .. "/route", nil, body or {}, true)
 end

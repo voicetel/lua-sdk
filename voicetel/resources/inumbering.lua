@@ -26,6 +26,8 @@ end
 
 -- order purchases new TNs.
 --   body: { numbers = { "2015550123", { number = "...", route = 4 } } }
+-- `route` is the global route type for numbers in this order: 1 USER, 2 T30,
+-- 3 VOICE_BRIDGE, 4 DID (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
 -- Response data: { orderId, amountCharged (amount deducted from the account
 --   balance), numbersOrdered, failed }
 -- POST /v2.2/orders
