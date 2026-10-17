@@ -1,0 +1,29 @@
+name: Publish to LuaRocks
+
+# Uploads the rockspec to LuaRocks on every v* tag push.
+# The rockspec filename carries the version (voicetel-<ver>-1.rockspec).
+#
+# Required repo secret:
+#   LUAROCKS_API_KEY — luarocks.org → Settings → API Keys
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to LuaRocks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Lua + LuaRocks
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4 luarocks
+
+      - name: Upload rockspec
+        run: luarocks upload --api-key="${{ secrets.LUAROCKS_API_KEY }}" $(ls voicetel-*.rockspec)
