@@ -80,13 +80,35 @@ describe("transport", function()
 
     describe("errors", function()
         it("returns a structured error for 404", function()
-            local t = new_transport({ helpers.err(404, "not found", "NOT_FOUND") })
+            local t = new_transport({ helpers.err(404, "not found") })
             local v, err = t:request("GET", "/v2.2/x", nil, nil, true)
             assert.is_nil(v)
             assert.are.equal("not_found", err.kind)
             assert.are.equal(404, err.status_code)
             assert.are.equal("not found", err.message)
-            assert.are.equal("NOT_FOUND", err.code)
+            assert.are.equal(404, err.code)
+        end)
+
+        it("parses the spec errorResponse envelope", function()
+            -- Exact wire shape from the spec:
+            --   { "status": "error", "error": { "code": 400, "message": "..." } }
+            local t = new_transport({ {
+                status = 400,
+                body   = '{"status":"error","error":{"code":400,"message":"Field Required: number"}}',
+            } })
+            local v, err = t:request("GET", "/v2.2/x", nil, nil, true)
+            assert.is_nil(v)
+            assert.are.equal("bad_request", err.kind)
+            assert.are.equal(400, err.status_code)
+            assert.are.equal(400, err.code)
+            assert.are.equal("Field Required: number", err.message)
+        end)
+
+        it("tolerates a flat { code, message } error body", function()
+            local t = new_transport({ { status = 400, body = '{"code":12,"message":"flat"}' } })
+            local _, err = t:request("GET", "/v2.2/x", nil, nil, true)
+            assert.are.equal(12, err.code)
+            assert.are.equal("flat", err.message)
         end)
 
         it("handles a non-JSON error body", function()
@@ -101,6 +123,15 @@ describe("transport", function()
             local _, err = t:request("GET", "/v2.2/x", nil, nil, true)
             assert.is_not_nil(err)
             assert.matches("no api key", err.message)
+            assert.are.equal("authentication", err.kind)
+        end)
+
+        it("rejects an empty/whitespace api key as authentication", function()
+            local t = new_transport({ }, { api_key = "   " })
+            local _, err = t:request("GET", "/v2.2/x", nil, nil, true)
+            assert.is_not_nil(err)
+            assert.matches("no api key", err.message)
+            assert.are.equal("authentication", err.kind)
         end)
     end)
 
@@ -130,7 +161,8 @@ describe("transport", function()
         it("honors integer Retry-After header", function()
             local slept = {}
             local t, mock = new_transport({
-                { status = 429, headers = { ["Retry-After"] = "3" }, body = '{"message":"slow"}' },
+                { status = 429, headers = { ["Retry-After"] = "3" },
+                  body = '{"status":"error","error":{"code":429,"message":"slow"}}' },
                 helpers.ok({ ok = 1 }),
             }, { max_retries = 1 })
             -- replace the sleep used by this transport so we can capture the requested delay
@@ -138,6 +170,20 @@ describe("transport", function()
             local _, err = t:request("GET", "/v2.2/x", nil, nil, true)
             assert.is_nil(err)
             assert.are.equal(3, slept[1])
+            assert.are.equal(2, #mock.calls)
+        end)
+
+        it("caps an honored Retry-After at 8 seconds", function()
+            local slept = {}
+            local t, mock = new_transport({
+                { status = 429, headers = { ["Retry-After"] = "60" },
+                  body = '{"status":"error","error":{"code":429,"message":"slow"}}' },
+                helpers.ok({ ok = 1 }),
+            }, { max_retries = 1 })
+            t.sleep_fn = function(secs) slept[#slept+1] = secs end
+            local _, err = t:request("GET", "/v2.2/x", nil, nil, true)
+            assert.is_nil(err)
+            assert.are.equal(8, slept[1])
             assert.are.equal(2, #mock.calls)
         end)
 

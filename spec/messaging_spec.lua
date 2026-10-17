@@ -3,11 +3,11 @@ local helpers = require("spec.helpers")
 describe("messaging", function()
     it("history with all options", function()
         local c, m = helpers.new_client({ helpers.ok({ messages = {} }) })
-        c.messaging:history({ number = "2015550123", start = 1, ["end"] = 2, type = "sms" })
+        c.messaging:history({ number = "2015550123", from = 1, to = 2, type = "sms" })
         local url = m.calls[1].url
         assert.matches("number=2015550123", url)
-        assert.matches("start=1", url)
-        assert.matches("end=2", url)
+        assert.matches("from=1", url)
+        assert.matches("to=2", url)
         assert.matches("type=sms", url)
     end)
 
@@ -38,11 +38,11 @@ describe("messaging", function()
             helpers.ok({ result = { status = "Success" } }),
         })
         c.messaging:create_brand({ messagingBrandId = "B1", messagingBrandName = "x" })
-        c.messaging:campaign_status()
+        c.messaging:campaign_status("CAMP002,ZZZZZZZ")
         c.messaging:create_campaign({ messagingBrandId = "B1", externalCampaignId = "C1",
                                        campaignDescription = "x" })
         assert.matches("/v2.2/messaging/brands$",    m.calls[1].url)
-        assert.matches("/v2.2/messaging/campaigns$", m.calls[2].url)
+        assert.matches("/v2.2/messaging/campaigns%?ids=CAMP002%%2CZZZZZZZ$", m.calls[2].url)
         assert.matches("/v2.2/messaging/campaigns$", m.calls[3].url)
     end)
 
@@ -81,7 +81,7 @@ describe("messaging", function()
                 },
             }),
         })
-        local r, err = c.messaging:campaign_status()
+        local r, err = c.messaging:campaign_status({ "CAMP002", "ZZZZZZZ" })
         assert.is_nil(err)
         local first = r.campaigns[1]
         assert.are.equal("CAMPAIGN_DCA_REJECTED", first.status)
@@ -102,10 +102,12 @@ describe("messaging", function()
         assert.matches("numbers=2015550123%%2C2015555678", m.calls[1].url)
     end)
 
-    it("numbers_state with empty list omits the query", function()
+    it("numbers_state accepts a comma-separated string", function()
         local c, m = helpers.new_client({ helpers.ok({ numbers = {} }) })
-        c.messaging:numbers_state({})
-        assert.are.equal("https://api.voicetel.com/v2.2/numbers/messaging", m.calls[1].url)
+        c.messaging:numbers_state("2015550123")
+        assert.are.equal(
+            "https://api.voicetel.com/v2.2/numbers/messaging?numbers=2015550123",
+            m.calls[1].url)
     end)
 
     -- v2.2.15: messaging-health endpoints have no response schema in the spec,

@@ -1,7 +1,7 @@
 -- voicetel.resources.account — operations under the /v2.2/account* paths.
 --
--- Note: cdr, recurring_charges, payments, registration, info, and the
--- login api-key exchange all share a 6 req/hour/IP rate limit.
+-- Rate limits: get, cdr, recurring_charges and the login api-key exchange
+-- (client:login) are each limited to 6 requests per hour per IP.
 
 local M = {}
 M.__index = M
@@ -28,10 +28,10 @@ function M:add(body)
     return self._t:request("POST", "/v2.2/account", nil, body or {}, true)
 end
 
--- signup is the public sign-up flow.
+-- signup is the public sign-up flow (no Authorization header required).
 -- POST /v2.2/accounts
 function M:signup(body)
-    return self._t:request("POST", "/v2.2/accounts", nil, body or {}, true)
+    return self._t:request("POST", "/v2.2/accounts", nil, body or {}, false)
 end
 
 -- cdr fetches call detail records in the [start, end] Unix-seconds range.
@@ -43,25 +43,28 @@ function M:cdr(start_ts, end_ts)
     return self._t:request("GET", "/v2.2/account/cdr", q, nil, true)
 end
 
--- credits returns the full credit history.
--- GET /v2.2/account/credits
-function M:credits()
-    return self._t:request("GET", "/v2.2/account/credits", nil, nil, true)
+-- credits returns the credit history. Pass { status = "paid" | "unpaid" } to
+-- filter by payment state.
+-- GET /v2.2/account/credits   query: { status } (optional)
+function M:credits(opts)
+    local q
+    if opts and opts.status then q = { status = opts.status } end
+    return self._t:request("GET", "/v2.2/account/credits", q, nil, true)
 end
 
--- recurring_charges returns active MRCs (rate-limited).
+-- recurring_charges returns active MRCs (rate-limited: 6 req/hour/IP).
 -- GET /v2.2/account/recurring-charges
 function M:recurring_charges()
     return self._t:request("GET", "/v2.2/account/recurring-charges", nil, nil, true)
 end
 
--- payments returns the full payment history (rate-limited).
+-- payments returns the full payment history.
 -- GET /v2.2/account/payments
 function M:payments()
     return self._t:request("GET", "/v2.2/account/payments", nil, nil, true)
 end
 
--- registration returns the current SIP registration (rate-limited).
+-- registration returns the current SIP registration.
 -- GET /v2.2/account/registration
 function M:registration()
     return self._t:request("GET", "/v2.2/account/registration", nil, nil, true)

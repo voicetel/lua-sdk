@@ -4,8 +4,8 @@ local helpers  = require("spec.helpers")
 
 describe("voicetel module", function()
     it("exposes version + constants", function()
-        assert.are.equal("2.2.15",   voicetel.SDK_VERSION)
-        assert.are.equal("v2.2.15",  voicetel.API_VERSION)
+        assert.are.equal("2.2.16",   voicetel.SDK_VERSION)
+        assert.are.equal("v2.2.16",  voicetel.API_VERSION)
         assert.are.equal("https://api.voicetel.com", voicetel.DEFAULT_BASE_URL)
         assert.matches("voicetel%-lua", voicetel.DEFAULT_USER_AGENT)
         -- 0=Digest, 1=Lax (Digest | IP), 2=IP, 3=Strict (Digest + IP).
@@ -39,7 +39,8 @@ describe("voicetel module", function()
             local c, mock = helpers.new_client({
                 helpers.ok({ apikey = "32hex-token" }),
             }, { api_key = nil })
-            local key, err = c:login(1000000001, "hunter2")
+            -- Per the spec, username is a string.
+            local key, err = c:login("1000000001", "hunter2")
             assert.is_nil(err)
             assert.are.equal("32hex-token", key)
             assert.are.equal("32hex-token", c:api_key())
@@ -47,15 +48,26 @@ describe("voicetel module", function()
             assert.matches("/v2.2/account/api%-key$", mock.calls[1].url)
             assert.is_nil(mock.calls[1].headers.Authorization)
             local body = helpers.decode_body(mock, 1)
-            assert.are.equal(1000000001, body.username)
+            assert.are.equal("1000000001", body.username)
             assert.are.equal("hunter2", body.password)
+        end)
+
+        it("stringifies a numeric username defensively", function()
+            local c, mock = helpers.new_client({
+                helpers.ok({ apikey = "32hex-token" }),
+            }, { api_key = nil })
+            local key, err = c:login(1000000001, "hunter2")
+            assert.is_nil(err)
+            assert.are.equal("32hex-token", key)
+            local body = helpers.decode_body(mock, 1)
+            assert.are.equal("1000000001", body.username)
         end)
 
         it("returns an error when the response lacks apikey", function()
             local c = helpers.new_client({
                 helpers.ok({}),
             }, { api_key = nil })
-            local key, err = c:login(1, "x")
+            local key, err = c:login("1", "x")
             assert.is_nil(key)
             assert.is_not_nil(err)
             assert.matches("did not contain", err.message)
@@ -65,7 +77,7 @@ describe("voicetel module", function()
             local c = helpers.new_client({
                 helpers.err(401, "bad credentials"),
             }, { api_key = nil })
-            local key, err = c:login(1, "x")
+            local key, err = c:login("1", "x")
             assert.is_nil(key)
             assert.are.equal("authentication", err.kind)
         end)

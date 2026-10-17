@@ -1,20 +1,20 @@
--- voicetel-2.2.15-1.rockspec
+-- voicetel-2.2.16-1.rockspec
 package = "voicetel"
-version = "2.2.15-1"
+version = "2.2.16-1"
 
 source = {
     url = "git+https://github.com/voicetel/lua-sdk.git",
-    tag = "v2.2.15",
+    tag = "v2.2.16",
 }
 
 description = {
-    summary  = "Official Lua SDK for the VoiceTel REST API (v2.2.15).",
+    summary  = "Official Lua SDK for the VoiceTel REST API (v2.2.16).",
     detailed = [[
 The official Lua client library for the VoiceTel REST API. Designed for
 FreeSWITCH mod_lua scripting on production switches, with a LuaSocket
 fallback so the same library works outside FreeSWITCH for tests and tools.
 
-Wraps all 10 resource groups and 78 operations of the v2.2.15 API:
+Wraps all 10 resource groups and 79 operations of the v2.2.16 API:
 Account, ACL, Authentication, e911, Gateways, iNumbering, Lookups,
 Messaging, Numbers, Support. Includes automatic 429/5xx retry with
 Retry-After honoring, structured error types, and the standard
@@ -28,6 +28,11 @@ Retry-After honoring, structured error types, and the standard
 dependencies = {
     "lua >= 5.2",
     "lua-cjson >= 2.1.0",
+    -- Used by the non-FreeSWITCH fallback HTTP transport (with TLS peer +
+    -- hostname verification). Not needed inside FreeSWITCH mod_lua, where
+    -- freeswitch.Curl is used instead.
+    "luasocket >= 3.0",
+    "luasec >= 1.0",
 }
 
 build = {

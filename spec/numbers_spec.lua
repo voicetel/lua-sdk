@@ -162,20 +162,24 @@ describe("numbers", function()
             ok({ unassignedNumbers = { "2015550123" } }),
         })
         c.numbers:assign_campaign("2015550123", { campaignId = "ABC1234" })
-        c.numbers:unassign_campaign("2015550123")
-        c.numbers:bulk_unassign_campaign({ "2015550123", "2015555678" })
+        c.numbers:unassign_campaign("2015550123", "ABC1234")
+        c.numbers:bulk_unassign_campaign({ "2015550123", "2015555678" }, "ABC1234")
         assert.are.equal("PUT", m.calls[1].method)
 
-        -- per-number unassign: 200 with body, NOT 204
+        -- per-number unassign: 200 with body, NOT 204; campaignId is a
+        -- required query param and there is no request body
         assert.are.equal("DELETE", m.calls[2].method)
+        assert.matches("campaignId=ABC1234", m.calls[2].url)
         local body2 = m.calls[2].body
         assert.is_truthy(not body2 or body2 == "")
 
-        -- bulk unassign sends a JSON body and the response carries data
+        -- bulk unassign: numbers + campaignId as required query params, no body
         assert.are.equal("DELETE", m.calls[3].method)
-        assert.matches("/v2.2/numbers/messaging%-campaign$", m.calls[3].url)
-        local b = helpers.decode_body(m, 3)
-        assert.are.same({ "2015550123", "2015555678" }, b.numbers)
+        assert.matches("/v2.2/numbers/messaging%-campaign%?", m.calls[3].url)
+        assert.matches("numbers=2015550123%%2C2015555678", m.calls[3].url)
+        assert.matches("campaignId=ABC1234", m.calls[3].url)
+        local body3 = m.calls[3].body
+        assert.is_truthy(not body3 or body3 == "")
     end)
 
     it("set_port_out_pin surfaces changed/portOutPin", function()

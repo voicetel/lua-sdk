@@ -1,4 +1,4 @@
--- voicetel — official Lua SDK for the VoiceTel REST API (v2.2.15).
+-- voicetel — official Lua SDK for the VoiceTel REST API (v2.2.16).
 --
 -- Designed to run inside FreeSWITCH's mod_lua (Lua 5.2). HTTP transport is
 -- pluggable: by default we use `freeswitch.Curl` when available and fall
@@ -89,6 +89,8 @@ Client.__index = Client
 --   timeout       (number)   per-request timeout in seconds (default 30)
 --   http_backend  (function) override the HTTP transport (for tests/instrumentation)
 --   sleep         (function) override the inter-retry sleep (for tests)
+--   cafile        (string)   CA bundle path for TLS verification (LuaSocket
+--                            backend only; default: probe system paths)
 function M.new(opts)
     opts = opts or {}
     local t = transport.new({
@@ -99,6 +101,7 @@ function M.new(opts)
         timeout      = opts.timeout,
         http_backend = opts.http_backend,
         sleep        = opts.sleep,
+        cafile       = opts.cafile,
     })
 
     local client = setmetatable({ _t = t }, Client)
@@ -127,10 +130,12 @@ function Client:set_api_key(key) self._t:set_bearer(key) end
 
 -- login exchanges username + password for a 32-hex bearer token and installs
 -- it on this client. The exchange counts against the 6 req/hour/IP cap.
+-- Per the spec, username is a STRING (e.g. "1000000001"); numbers are
+-- tolerated and stringified for convenience.
 --
---   key, err = client:login(1000000001, "hunter2")
+--   key, err = client:login("1000000001", "hunter2")
 function Client:login(username, password)
-    local body = { username = username, password = password }
+    local body = { username = tostring(username), password = password }
     local data, err = self._t:request("POST", "/v2.2/account/api-key", nil, body, false)
     if err then return nil, err end
     if type(data) ~= "table" or type(data.apikey) ~= "string" or data.apikey == "" then

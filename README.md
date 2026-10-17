@@ -2,10 +2,10 @@
 
 The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/api/v2.2/) — built for **FreeSWITCH `mod_lua`** so you can place CNAM dips, route by LRN, send SMS, and provision e911 directly from your dialplan, with a `socket.http` fallback for offline tests and one-off scripts.
 
-![Version](https://img.shields.io/badge/version-2.2.15-blue)
+![Version](https://img.shields.io/badge/version-2.2.16-blue)
 ![Lua](https://img.shields.io/badge/lua-5.2%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-84%25-brightgreen)
 
 ## 📚 Table of Contents
 
@@ -28,7 +28,7 @@ The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/ap
 ### 🛠️ Built for FreeSWITCH mod_lua
 - **Drop-in friendly.** Copy `voicetel.lua` + the `voicetel/` directory into `/usr/share/freeswitch/scripts/` (or `/etc/freeswitch/scripts/`) — no LuaRocks required at runtime.
 - **`freeswitch.Curl` first.** When running inside mod_lua, the SDK uses the built-in HTTP client. No extra C libraries to compile, deploy, or audit.
-- **`socket.http` fallback.** Outside FreeSWITCH, the same code runs against LuaSocket / LuaSec so unit tests and CLI utilities work in any plain `lua5.2` / `lua5.3` environment.
+- **`socket.http` fallback.** Outside FreeSWITCH, the same code runs against LuaSocket / LuaSec so unit tests and CLI utilities work in any plain `lua5.2` / `lua5.3` environment. HTTPS requests verify the server certificate chain and hostname against a CA bundle probed from the usual system locations; override with `voicetel.new({ cafile = "/path/to/ca-bundle.pem" })` when needed.
 - **Blocking is fine.** Each call leg gets its own thread, so the SDK uses synchronous HTTP — no coroutines or callbacks to weave through your dialplan.
 
 ### 🔁 Production-Grade Transport
@@ -44,19 +44,19 @@ The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/ap
 - **Gateways** — list, create, update, delete, view bound numbers.
 - **Messaging** — SMS & MMS sending, message history, 10DLC brand and campaign registration, per-number messaging state, and messaging health (account overview, per-number live check, spam-blocked samples, alert-email setting).
 - **Lookups** — CNAM and LRN dips.
-- **iNumbering** — inventory search, coverage queries, number orders, port-in submissions, port-out availability (with the v2.2.14 `local_routing_number` / `rate_center_tier` fields).
+- **iNumbering** — inventory search, coverage queries, number orders, port-in submissions, port-out availability (with the v2.2.14 `localRoutingNumber` / `rateCenterTier` fields — wire names are camelCase and pass through unchanged).
 - **Support** — ticket create / read / update / delete, threaded messages, replies.
 - **ACL** — IP allowlist management with structured 409 conflict bodies.
 - **Authentication** — switch between Digest, IP-only, or hybrid modes; rotate passwords.
 
 ### 🧪 Battle-Tested
-- **93% line coverage** measured with [LuaCov](https://github.com/lunarmodules/luacov).
+- **84% line coverage** measured with [LuaCov](https://github.com/lunarmodules/luacov).
 - **100+ unit tests** under [Busted](https://lunarmodules.github.io/busted/) — every public method has a happy-path and an error-path test, the FreeSWITCH-mode dispatch is verified against a stubbed `freeswitch` global, and the retry/backoff/Retry-After paths are isolated with a fake clock.
 - **CI runs on Lua 5.2 and 5.3** to keep the code FreeSWITCH-mod_lua compatible (Lua 5.2 is the floor, since that's what FreeSWITCH bundles).
 
 ### 📦 Clean Distribution
 - One small Lua-only library — `voicetel.lua` plus a `voicetel/` directory of submodules. Total install footprint is under 50 KB.
-- One runtime dependency: [`lua-cjson`](https://github.com/openresty/lua-cjson) (already on most FreeSWITCH boxes; otherwise `apt-get install lua-cjson`).
+- Runtime dependencies: [`lua-cjson`](https://github.com/openresty/lua-cjson) (already on most FreeSWITCH boxes; otherwise `apt-get install lua-cjson`), plus `luasocket` and `luasec` for the non-FreeSWITCH fallback HTTP transport. `zlib` is optional — when it's installed the SDK advertises `Accept-Encoding: gzip` and inflates gzipped responses; without it, requests simply go out unencoded.
 - LuaRocks-compatible rockspec for users who want it.
 
 ## 🚀 Installation
@@ -92,8 +92,8 @@ local voicetel = require("voicetel")
 
 local client = voicetel.new({ api_key = os.getenv("VOICETEL_API_KEY") })
 
--- Or exchange credentials for an API key:
--- local key, err = client:login(1000000001, "hunter2")
+-- Or exchange credentials for an API key (username is a string per the spec):
+-- local key, err = client:login("1000000001", "hunter2")
 
 local me, err = client.account:get()
 if err then error(err.message) end
@@ -178,7 +178,7 @@ Re-fetch the API key after any password change — the old one is invalidated.
 
 ```lua
 local client = voicetel.new({})
-local key, err = client:login(1000000001, "hunter2")
+local key, err = client:login("1000000001", "hunter2")
 -- `key` is the new 32-hex bearer; the client already has it installed.
 ```
 
@@ -197,13 +197,13 @@ local client = voicetel.new({ api_key = os.getenv("VOICETEL_API_KEY") })
 | Authentication   | `client.authentication` | `client.authentication:update({ authType = voicetel.AUTH_TYPE_LAX })` |
 | e911             | `client.e911`           | `client.e911:validate({ address1 = "1 Main St", ... })`          |
 | Gateways         | `client.gateways`       | `client.gateways:list()`                                         |
-| iNumbering       | `client.inumbering`     | `client.inumbering:search_inventory({ npa = 201 })`              |
+| iNumbering       | `client.inumbering`     | `client.inumbering:search_inventory({ tnMask = "201555*" })`     |
 | Lookups          | `client.lookups`        | `client.lookups:lrn("2125550000", "2015550123")`                 |
 | Messaging        | `client.messaging`      | `client.messaging:send({ from_number = "...", to_number = "...", text = "..." })` |
 | Numbers          | `client.numbers`        | `client.numbers:assign_campaign("2015550123", { campaignId = "ABC1234" })` |
 | Support          | `client.support`        | `client.support:create({ subject = "...", message = "..." })`    |
 
-78 operations in total — every endpoint in the v2.2.15 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
+79 operations in total — every endpoint in the v2.2.16 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
 
 A few spec quirks worth knowing about:
 
@@ -213,7 +213,7 @@ A few spec quirks worth knowing about:
 - **`assign_campaign`** returns `status` = `"enabled"` (path B, bound synchronously), `"already"` (the number was already bound to this campaign — idempotent no-op), or `"pending"` (path C, provisioned asynchronously — poll `client.numbers:get_messaging(number)` and read its `pending` job until `state` is `done` or `failed`). The `job` field on the response carries the same table.
 - **`campaign_status`** items include a `dca` table with carrier (DCA) review progress: `electionComplete`, `electedCarriers`, and `carriers` (`{ carrier, status, detail, updatedAt }`, latest decision per carrier). `dca` is nil for `CAMPAIGN_INVALID_ID`.
 - **Messaging health** (`health`, `health_alerts`, `set_health_alerts`, `health_check`, `health_samples`) has no response schema in the spec, so each returns the decoded JSON table verbatim — index it directly (e.g. `client.messaging:health().summary`). `health_check` is limited to 30 checks per hour per account.
-- **`port_availability`** returns the v2.2.14 fields `local_routing_number` and `rate_center_tier` in addition to the older `number`, `portable`, `losing_carrier`, `reason`.
+- **`port_availability`** returns the v2.2.14 fields `localRoutingNumber` and `rateCenterTier` in addition to the older `number`, `portable`, `losingCarrier`, `reason` — the SDK passes the wire (camelCase) field names through unchanged.
 - **DELETE** endpoints generally return 204 No Content — those methods return `true` on success. Three exceptions return 200 with a body and return that data: `client.acl:remove`, `client.numbers:unassign_campaign`, and `client.numbers:bulk_unassign_campaign`.
 
 ## 🚨 Error Handling
@@ -263,14 +263,14 @@ Predicate helpers: `voicetel.is_rate_limit`, `voicetel.is_not_found`, `voicetel.
 
 ## ⏱️ Rate Limits
 
-These six endpoints are limited to **6 requests per hour per IP**:
+These four endpoints are limited to **6 requests per hour per IP**:
 
-- `account` — `client.account:get()`
-- `account/cdr` — `client.account:cdr(start, end_ts)`
-- `account/recurring-charges` — `client.account:recurring_charges()`
-- `account/payments` — `client.account:payments()`
-- `account/registration` — `client.account:registration()`
-- `account/api-key` — `client:login(username, password)`
+- `GET /v2.2/account` — `client.account:get()`
+- `GET /v2.2/account/cdr` — `client.account:cdr(start, end_ts)`
+- `GET /v2.2/account/recurring-charges` — `client.account:recurring_charges()`
+- `POST /v2.2/account/api-key` — `client:login(username, password)`
+
+Additionally, `POST /v2.2/messaging/health/check` (`client.messaging:health_check(number)`) is limited to **30 checks per hour per account**.
 
 The SDK automatically retries 429 responses with `Retry-After` honored, up to `max_retries` (default `2`). To bump it:
 
@@ -302,6 +302,8 @@ busted --coverage
 lua -e 'require("luacov.runner").run_report()'
 cat luacov.report.out | tail -30
 ```
+
+Note: the checked-in `luacov.report.out` / `luacov.stats.out` are generated artifacts — they regenerate from the current sources whenever you run `busted --coverage` followed by the report step above, so their contents may lag the latest code until the next run.
 
 Integration tests are skipped unless you set the credential env vars:
 

@@ -97,4 +97,68 @@ describe("voicetel.http", function()
             assert.are.equal(200, resp.status)
         end)
     end)
+
+    describe("TLS hostname verification", function()
+        -- Mimics the subset of LuaSec's certificate object used by
+        -- http._verify_hostname: extensions() + subject().
+        local function fake_cert(san_dns, san_ips, cn)
+            return {
+                extensions = function()
+                    if not san_dns and not san_ips then return {} end
+                    local san = { name = "X509v3 Subject Alternative Name" }
+                    if san_dns then san.dNSName = san_dns end
+                    if san_ips then san.iPAddress = san_ips end
+                    return { ["2.5.29.17"] = san }
+                end,
+                subject = function()
+                    if not cn then return {} end
+                    return { { oid = "2.5.4.3", name = "commonName", value = cn } }
+                end,
+            }
+        end
+
+        it("matches an exact SAN dNSName", function()
+            assert.is_true(http._verify_hostname(
+                fake_cert({ "api.voicetel.com" }, nil, nil), "api.voicetel.com"))
+        end)
+
+        it("is case-insensitive", function()
+            assert.is_true(http._verify_hostname(
+                fake_cert({ "API.VoiceTel.COM" }, nil, nil), "api.voicetel.com"))
+        end)
+
+        it("matches a one-label wildcard", function()
+            assert.is_true(http._verify_hostname(
+                fake_cert({ "*.voicetel.com" }, nil, nil), "api.voicetel.com"))
+        end)
+
+        it("wildcard does not span multiple labels", function()
+            local ok = http._verify_hostname(
+                fake_cert({ "*.voicetel.com" }, nil, nil), "a.b.voicetel.com")
+            assert.is_nil(ok)
+        end)
+
+        it("wildcard does not match the bare apex", function()
+            local ok = http._verify_hostname(
+                fake_cert({ "*.voicetel.com" }, nil, nil), "voicetel.com")
+            assert.is_nil(ok)
+        end)
+
+        it("rejects a mismatched SAN", function()
+            local ok, err = http._verify_hostname(
+                fake_cert({ "evil.example.com" }, nil, nil), "api.voicetel.com")
+            assert.is_nil(ok)
+            assert.matches("hostname mismatch", err)
+        end)
+
+        it("falls back to the subject CN when no SAN is present", function()
+            assert.is_true(http._verify_hostname(
+                fake_cert(nil, nil, "api.voicetel.com"), "api.voicetel.com"))
+        end)
+
+        it("matches an iPAddress SAN for IP-literal hosts", function()
+            assert.is_true(http._verify_hostname(
+                fake_cert(nil, { "192.0.2.10" }, nil), "192.0.2.10"))
+        end)
+    end)
 end)

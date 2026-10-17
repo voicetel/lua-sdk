@@ -16,6 +16,13 @@ local errors = require("voicetel.errors")
 local json   = require("voicetel.json")
 local http   = require("voicetel.http")
 
+-- zlib is an optional dependency: when present we advertise gzip support via
+-- Accept-Encoding and transparently inflate gzipped responses. When absent we
+-- simply never ask for gzip, so the server responds with identity encoding.
+local ok_zlib, zlib = pcall(require, "zlib")
+local HAS_ZLIB = ok_zlib and type(zlib) == "table" and type(zlib.inflate) == "function"
+if not HAS_ZLIB then zlib = nil end
+
 local M = {}
 M.__index = M
 
@@ -81,10 +88,15 @@ end
 
 -- backoff_delay computes the wait before retry `attempt+1`, in seconds.
 -- attempt is 0-indexed (so the first retry sleeps base, second 2*base, ...).
+-- An honored Retry-After value is capped at BACKOFF_CAP_SEC like the
+-- exponential fallback.
 local function backoff_delay(attempt, resp)
     if resp then
         local retry_after = parse_retry_after(http.get_header(resp, "Retry-After"))
-        if retry_after then return retry_after end
+        if retry_after then
+            if retry_after > BACKOFF_CAP_SEC then return BACKOFF_CAP_SEC end
+            return retry_after
+        end
     end
     local d = BACKOFF_BASE_SEC * (2 ^ attempt)
     if d > BACKOFF_CAP_SEC then d = BACKOFF_CAP_SEC end
@@ -131,11 +143,15 @@ local function decode_response(resp)
     local raw = resp.body or ""
     local encoding = http.get_header(resp, "Content-Encoding")
     if encoding and string.find(string.lower(tostring(encoding)), "gzip", 1, true) then
-        local ok_zlib, zlib = pcall(require, "zlib")
-        if ok_zlib and zlib and zlib.inflate then
+        if HAS_ZLIB then
             local inflate = zlib.inflate()
             local inflated, ierr = inflate(raw)
             if inflated then raw = inflated elseif ierr then raw = raw end
+        else
+            -- A server should never gzip without us advertising support, but
+            -- fail clearly rather than surfacing a JSON decode error.
+            return nil, errors.new_transport(
+                "received a gzip-encoded response but the optional zlib module is not installed")
         end
     end
     local decoded, derr
@@ -156,10 +172,23 @@ local function decode_response(resp)
 
     local code, message
     if type(decoded) == "table" then
-        code = decoded.code or decoded.error
-        message = decoded.message or decoded.error
+        -- Spec errorResponse envelope:
+        --   { status = "error", error = { code = <int>, message = <string> } }
+        local inner = decoded.error
+        if type(inner) == "table" then
+            code = inner.code
+            message = inner.message
+        else
+            -- Defensive fallback for flat { code, message } / { error = "msg" }
+            -- bodies that don't match the documented envelope.
+            code = decoded.code
+            message = decoded.message
+            if type(inner) == "string" and message == nil then
+                message = inner
+            end
+        end
     end
-    if type(code) ~= "string" then code = nil end
+    if type(code) ~= "number" and type(code) ~= "string" then code = nil end
     if type(message) ~= "string" or message == "" then
         message = "HTTP " .. tostring(status)
     end
@@ -174,6 +203,8 @@ end
 --   timeout     (number, seconds)
 --   http_backend (function: req -> resp, err)
 --   sleep        (function: seconds -> nil) — test hook
+--   cafile       (string) — CA bundle path for TLS verification on the
+--                LuaSocket/LuaSec backend (ignored by the FreeSWITCH backend)
 function M.new(opts)
     opts = opts or {}
     local self = {
@@ -182,7 +213,7 @@ function M.new(opts)
         api_key      = opts.api_key,
         max_retries  = opts.max_retries or DEFAULT_MAX_RETRIES,
         timeout      = opts.timeout or DEFAULT_TIMEOUT,
-        http_backend = opts.http_backend or http.default_backend(),
+        http_backend = opts.http_backend or http.default_backend({ cafile = opts.cafile }),
         sleep_fn     = opts.sleep,
     }
     return setmetatable(self, M)
@@ -209,14 +240,16 @@ end
 -- responses result is `true`. On any failure, result is nil and err is a
 -- structured error table.
 function M:request(method, path, query, body, require_auth)
-    if require_auth and not self.api_key then
-        return nil, errors.new(0, nil,
-            "no api key set; call client:login(username, password) or pass api_key to voicetel.new",
-            nil)
+    if require_auth then
+        local key = self.api_key
+        if type(key) ~= "string" or key:match("^%s*$") then
+            -- Reported with the authentication kind (not "unknown") so that
+            -- voicetel.is_authentication(err) is true for a missing key.
+            return nil, errors.new_transport(
+                "no api key set; call client:login(username, password) or pass api_key to voicetel.new",
+                errors.KIND_AUTHENTICATION)
+        end
     end
-    -- Override kind to authentication when the key is missing — the call
-    -- above defaulted to "unknown" because status is 0.
-    -- (Done inline so we don't allocate two error tables.)
 
     local url = self.base_url .. path .. build_query(query)
     local raw_body = nil
@@ -238,9 +271,9 @@ function M:request(method, path, query, body, require_auth)
     for attempt = 0, self.max_retries do
         local headers = {
             ["Accept"]          = "application/json",
-            ["Accept-Encoding"] = "gzip",
             ["User-Agent"]      = self.user_agent,
         }
+        if HAS_ZLIB then headers["Accept-Encoding"] = "gzip" end
         if raw_body then headers["Content-Type"] = "application/json" end
         if require_auth then headers["Authorization"] = "Bearer " .. self.api_key end
         if idempotency_key then headers["Idempotency-Key"] = idempotency_key end

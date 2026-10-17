@@ -49,11 +49,119 @@ local function parse_url(url)
     return { scheme = scheme, host = host, port = port, path = path }
 end
 
+-- ------------------------------------------------------ CA store ---
+
+-- TLS parameters shared by both LuaSec paths: verify the peer chain against a
+-- real CA bundle and never allow SSLv2/SSLv3.
+local TLS_OPTIONS = { "all", "no_sslv2", "no_sslv3" }
+
+-- Known CA bundle locations, in probe order (Debian/Ubuntu, Fedora/RHEL,
+-- OpenSUSE, OpenBSD/Alpine/macOS).
+local CAFILE_CANDIDATES = {
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    "/etc/ssl/ca-bundle.pem",
+    "/etc/ssl/cert.pem",
+}
+
+-- find_cafile resolves the CA bundle to verify peers against: an explicit
+-- `cafile` client option wins, otherwise the usual system paths are probed.
+-- Returns nil when nothing usable is found — callers must fail loudly in
+-- that case rather than fall back to an unverified connection.
+local function find_cafile(override)
+    if override then return override end
+    for _, path in ipairs(CAFILE_CANDIDATES) do
+        local f = io.open(path, "rb")
+        if f then f:close(); return path end
+    end
+    return nil
+end
+
+local NO_CAFILE_ERR =
+    "TLS: no CA bundle found for peer verification; install the system " ..
+    "ca-certificates package or pass cafile = \"/path/to/ca-bundle.pem\" to voicetel.new"
+
+-- --------------------------- hostname verification (pure Lua) ---
+
+-- Released LuaSec (<= 1.3.x) verifies the certificate chain when
+-- verify = "peer" but never matches the certificate against the expected
+-- hostname (upstream only gains that via sethost() after 1.3.2). We verify
+-- the host ourselves after the handshake: subjectAltName dNSName entries
+-- first (RFC 6125), iPAddress entries for IP-literal hosts, and the subject
+-- CN when no SAN is present at all. A wildcard covers exactly one left-most
+-- label ("*.example.com" matches "api.example.com" but not "a.b.example.com").
+local function dnsname_match(pattern, host)
+    pattern = string.lower(tostring(pattern or ""))
+    host = string.lower(tostring(host or ""))
+    if string.sub(pattern, 1, 2) == "*." then
+        local suffix = string.sub(pattern, 2) -- ".example.com"
+        local label, rest = string.match(host, "^([^.]+)(%..+)$")
+        return label ~= nil and rest == suffix
+    end
+    return pattern == host
+end
+
+-- verify_hostname(cert, host) -> true | nil, err
+local function verify_hostname(cert, host)
+    local names, ips = {}, {}
+    local ok_ext, exts = pcall(function() return cert:extensions() end)
+    if ok_ext and type(exts) == "table" then
+        -- subjectAltName lives under its OID (2.5.29.17) as
+        -- { name = "X509v3 Subject Alternative Name", dNSName = { ... }, ... }
+        local san = exts["2.5.29.17"]
+        if type(san) == "table" then
+            if type(san.dNSName) == "table" then
+                for _, n in ipairs(san.dNSName) do names[#names + 1] = n end
+            end
+            if type(san.iPAddress) == "table" then
+                for _, n in ipairs(san.iPAddress) do ips[#ips + 1] = n end
+            end
+        end
+    end
+    if #names == 0 and #ips == 0 then
+        local ok_s, subj = pcall(function() return cert:subject() end)
+        if ok_s and type(subj) == "table" then
+            for _, entry in ipairs(subj) do
+                if type(entry) == "table"
+                    and (entry.name == "commonName" or entry.oid == "2.5.4.3")
+                    and entry.value
+                then
+                    names[#names + 1] = entry.value
+                end
+            end
+        end
+    end
+    for _, n in ipairs(names) do
+        if dnsname_match(n, host) then return true end
+    end
+    for _, n in ipairs(ips) do
+        if tostring(n) == tostring(host) then return true end
+    end
+    return nil, "TLS: certificate hostname mismatch (expected " .. tostring(host) .. ")"
+end
+
+-- check_peer_hostname(conn, host) -> true | nil, err
+-- Verifies the presented certificate against `host` on a handshaked LuaSec
+-- connection. Callers that already passed sethost() before the handshake
+-- (where OpenSSL enforces the match itself) skip this call.
+local function check_peer_hostname(conn, host)
+    if type(conn.getpeercertificate) ~= "function" then
+        return nil, "TLS: cannot verify the peer hostname on this LuaSec version"
+    end
+    local cert = conn:getpeercertificate()
+    if not cert then
+        return nil, "TLS: peer did not present a certificate"
+    end
+    return verify_hostname(cert, host)
+end
+
 -- --------------------------------- Persistent connection pool ---
 
 -- Single-entry pool: keeps one TCP+TLS socket alive for reuse.
 -- All SDK traffic targets one host (api.voicetel.com), so one slot suffices.
-local function new_conn_pool()
+-- tls_cfg = { cafile = "/path/to/ca-bundle.pem" or nil }.
+local function new_conn_pool(tls_cfg)
+    tls_cfg = tls_cfg or {}
     local entry = nil
 
     local function evict()
@@ -95,21 +203,46 @@ local function new_conn_pool()
                 tcp:close()
                 return nil, "LuaSec (ssl) required for HTTPS URLs"
             end
+            if not tls_cfg.cafile then
+                tcp:close()
+                return nil, NO_CAFILE_ERR
+            end
             local wrapped, werr = ssl.wrap(tcp, {
                 mode = "client",
                 protocol = "any",
                 verify = "peer",
-                options = {"all"},
+                options = TLS_OPTIONS,
+                cafile = tls_cfg.cafile,
             })
             if not wrapped then
                 tcp:close()
                 return nil, "TLS wrap failed: " .. tostring(werr)
             end
             wrapped:sni(host)
+            -- LuaSec > 1.3.2 can enforce the hostname during the handshake
+            -- itself; enable that when available.
+            local host_checked = false
+            if type(wrapped.sethost) == "function" then
+                local shok, sherr = wrapped:sethost(host)
+                if not shok then
+                    wrapped:close()
+                    return nil, "TLS sethost failed: " .. tostring(sherr)
+                end
+                host_checked = true
+            end
             local hok, herr = wrapped:dohandshake()
             if not hok then
                 wrapped:close()
                 return nil, "TLS handshake failed: " .. tostring(herr)
+            end
+            -- Released LuaSec verified the chain but not the hostname — do
+            -- it now (skipped when sethost above already covered it).
+            if not host_checked then
+                local vok, verr = check_peer_hostname(wrapped, host)
+                if not vok then
+                    wrapped:close()
+                    return nil, verr
+                end
             end
             return wrapped, nil
         end
@@ -178,7 +311,7 @@ local function read_raw_response(sock)
         while true do
             local size_line
             size_line, err = sock:receive("*l")
-            if not size_line then break end
+            if not size_line then return nil, "body read: " .. tostring(err), false end
             local size = tonumber(size_line, 16)
             if not size or size == 0 then
                 sock:receive("*l")
@@ -186,7 +319,7 @@ local function read_raw_response(sock)
             end
             local chunk
             chunk, err = sock:receive(size)
-            if not chunk then break end
+            if not chunk then return nil, "body read: " .. tostring(err), false end
             chunks[#chunks + 1] = chunk
             sock:receive("*l")
         end
@@ -277,19 +410,87 @@ end
 
 -- --------------------------------------------------- LuaSocket fallback ---
 
-function M.new_luasocket_backend()
+-- new_luasocket_backend builds the non-FreeSWITCH backend. opts:
+--   cafile (string) — CA bundle path for TLS peer verification; when omitted
+--   the usual system locations are probed (see CAFILE_CANDIDATES).
+function M.new_luasocket_backend(opts)
+    opts = opts or {}
     local ok_http, http_mod = pcall(require, "socket.http")
     if not ok_http then
         return nil, "socket.http not installed"
     end
     local ltn12 = require("ltn12")
 
-    local pool = new_conn_pool()
+    local cafile = find_cafile(opts.cafile)
+
+    -- LuaSec's ssl.https is the preferred HTTPS path. It is fed
+    -- verify="peer" + the CA bundle for chain verification; hostname
+    -- verification is hooked into the connection's connect() below, since
+    -- released LuaSec performs none on its own. The raw pooled path further
+    -- down remains as the fallback for partial installs that ship ssl
+    -- without ssl.https.
+    local ok_https, https_mod = pcall(require, "ssl.https")
+    if ok_https then
+        -- LuaSec 0.x is too old to trust (no cert:extensions()/subject());
+        -- drop to the raw path, which fails loudly if it cannot verify.
+        local v = tostring(https_mod._VERSION or "")
+        if v:match("^0%.") or type(https_mod.tcp) ~= "function" then
+            ok_https = false
+        end
+    end
+
+    local pool = new_conn_pool({ cafile = cafile })
 
     return function(req)
         local parsed = parse_url(req.url)
 
-        -- Persistent-connection path for HTTPS: reuses the TCP+TLS socket
+        if parsed and parsed.scheme == "https" and ok_https then
+            if not cafile then return nil, NO_CAFILE_ERR end
+            local body_chunks = {}
+            local source = nil
+            local hdr = {}
+            for k, v in pairs(req.headers or {}) do hdr[k] = v end
+            if req.body and #req.body > 0 then
+                source = ltn12.source.string(req.body)
+                hdr["Content-Length"] = tostring(#req.body)
+            end
+            local make_conn = https_mod.tcp({
+                protocol = "any",
+                verify   = "peer",
+                options  = TLS_OPTIONS,
+                cafile   = cafile,
+            })
+            local function create()
+                local conn = make_conn()
+                local orig_connect = conn.connect
+                -- connect() establishes TCP, wraps TLS and runs the
+                -- handshake (raising on failure); the certificate hostname
+                -- check rides along before the request is sent.
+                conn.connect = function(self, host, port)
+                    orig_connect(self, host, port)
+                    local vok, verr = check_peer_hostname(self, host)
+                    if not vok then error(verr) end
+                    return 1
+                end
+                return conn
+            end
+            local one, code, resp_headers = http_mod.request{
+                url     = req.url,
+                method  = string.upper(req.method or "GET"),
+                headers = hdr,
+                source  = source,
+                sink    = ltn12.sink.table(body_chunks),
+                create  = create,
+            }
+            if not one then return nil, tostring(code) end
+            return {
+                status  = tonumber(code) or 0,
+                headers = resp_headers or {},
+                body    = table.concat(body_chunks),
+            }, nil
+        end
+
+        -- Raw persistent-connection path for HTTPS: reuses the TCP+TLS socket
         -- so that TLS session state is retained across requests.
         if parsed and parsed.scheme == "https" then
             local sock, serr = pool.acquire(parsed.host, parsed.port, "https", req.timeout or 30)
@@ -332,33 +533,6 @@ function M.new_luasocket_backend()
         end
 
         -- Plain HTTP (or unparseable URL): delegate to LuaSocket's http.request.
-        local is_https = string.sub(req.url, 1, 5) == "https"
-        if is_https then
-            local ok_s, https = pcall(require, "ssl.https")
-            if not ok_s then return nil, "LuaSec (ssl.https) required for HTTPS URLs" end
-            local body_chunks = {}
-            local source = nil
-            local hdr = {}
-            for k, v in pairs(req.headers or {}) do hdr[k] = v end
-            if req.body and #req.body > 0 then
-                source = ltn12.source.string(req.body)
-                hdr["Content-Length"] = tostring(#req.body)
-            end
-            local one, code, resp_headers = https.request{
-                url     = req.url,
-                method  = string.upper(req.method or "GET"),
-                headers = hdr,
-                source  = source,
-                sink    = ltn12.sink.table(body_chunks),
-            }
-            if not one then return nil, tostring(code) end
-            return {
-                status  = tonumber(code) or 0,
-                headers = resp_headers or {},
-                body    = table.concat(body_chunks),
-            }, nil
-        end
-
         local body_chunks = {}
         local source = nil
         local headers = {}
@@ -386,7 +560,8 @@ end
 -- default_backend picks the FreeSWITCH backend if `freeswitch.Curl` exists at
 -- the moment of the first request; otherwise LuaSocket. The selection is
 -- deferred per-call so unit tests can install a stub freeswitch global.
-function M.default_backend()
+-- opts is forwarded to new_luasocket_backend (e.g. { cafile = "..." }).
+function M.default_backend(opts)
     local fs_backend = M.new_freeswitch_backend()
     local ls_backend, ls_err
     return function(req)
@@ -395,7 +570,7 @@ function M.default_backend()
             return fs_backend(req)
         end
         if not ls_backend then
-            ls_backend, ls_err = M.new_luasocket_backend()
+            ls_backend, ls_err = M.new_luasocket_backend(opts)
             if not ls_backend then
                 return nil, "no HTTP backend available (" .. tostring(ls_err) .. ")"
             end
@@ -403,5 +578,12 @@ function M.default_backend()
         return ls_backend(req)
     end
 end
+
+-- ------------------------------------------------------ exposed helpers ---
+
+-- Exposed for tests.
+M._find_cafile     = find_cafile
+M._dnsname_match   = dnsname_match
+M._verify_hostname = verify_hostname
 
 return M

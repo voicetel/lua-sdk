@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.2.16 — 2026-10-17
+
+Spec-conformance release tracking VoiceTel API spec v2.2.16. **Contains breaking changes** — request shapes now match the documented wire format.
+
+### Breaking
+- `login` / API-key exchange and sub-account create: `username` (and `masterAccount`) are now **strings** per spec.
+- `GET /v2.2/inventory` search: parameters are `tnMask` (required), `quantity`, `province`, `rateCenter`, `lata`; the old `npa`/`nxx`/`state`/`ratecenter`/`contains`/`endswith`/`limit` params were removed.
+- `GET /v2.2/inventory/coverage`: `countBy` (required; `state`/`city`/`rateCenter`/`npanxx`/`block`) plus `locState`/`city`/`rcAbbre`/`npa`/`lata`; the old `state`/`ratecenter` params were removed.
+- `GET /v2.2/messages` history: parameters are `number` (required), `from`, `to`, `type`; `start`/`end` were removed.
+- `GET /v2.2/messaging/campaigns`: the `ids` query parameter is now required.
+- `DELETE /v2.2/numbers/{number}/messaging-campaign`: the `campaignId` query parameter is now required.
+- `DELETE /v2.2/numbers/messaging-campaign` (bulk unassign): sends required `numbers` + `campaignId` **query** parameters; no request body.
+- `DELETE /v2.2/acl`: sends the required `cidrs` query parameter; no request body.
+- `GET /v2.2/numbers/messaging`: the `numbers` parameter is now required.
+- `GET /v2.2/ports/{id}`: `id` is the 5-character pid **string**.
+- `lata` filter parameters are strings, matching the response schemas.
+- Message-history `value.number` is now a string (spec fix).
+
+### Fixed
+- API error envelope `{"status":"error","error":{"code":N,"message":"..."}}` is parsed correctly — `code` and `message` are populated instead of degrading to `HTTP <status>`.
+- `POST /v2.2/accounts` (signup) no longer requires an API key, per spec.
+- Honored `Retry-After` values are capped at 8 seconds (previously unbounded).
+- Path parameters are URL-encoded.
+- `GET /v2.2/account/credits` exposes the optional `status` filter; the tickets list includes `totalCount`; removed the nonexistent `expires` field from registration data.
+- Docs: corrected the rate-limit list (GET `/v2.2/account`, `/account/cdr`, `/account/recurring-charges`, POST `/account/api-key` at 6/hr/IP; POST `/v2.2/messaging/health/check` at 30/hr/account) and the operation count (79).
+- HTTPS now loads a CA store and verifies hostnames on both LuaSec paths; the rockspec declares `luasocket`/`luasec`; empty API keys are rejected; truncated chunked responses now raise a transport error.
+
 ## 2.2.15 — 2026-10-15
 
 Sync with VoiceTel API spec v2.2.15.

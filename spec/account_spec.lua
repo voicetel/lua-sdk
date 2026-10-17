@@ -33,6 +33,14 @@ describe("account", function()
         local c, m = setup({ helpers.ok({ username = "1000000003" }) })
         c.account:signup({ name = "x", email = "x@y.com" })
         assert.matches("/v2.2/accounts$", m.calls[1].url)
+        -- signup is a public endpoint: no Authorization header
+        assert.is_nil(m.calls[1].headers.Authorization)
+    end)
+
+    it("credits passes the optional status filter", function()
+        local c, m = setup({ helpers.ok({ credits = {} }) })
+        c.account:credits({ status = "unpaid" })
+        assert.matches("/credits%?status=unpaid$", m.calls[1].url)
     end)
 
     it("cdr passes start/end in query", function()

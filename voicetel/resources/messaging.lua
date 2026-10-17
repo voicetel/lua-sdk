@@ -9,16 +9,28 @@ M.__index = M
 
 function M.new(transport) return setmetatable({ _t = transport }, M) end
 
--- history fetches message history.
--- GET /v2.2/messages   query: { number, start, end (`["end"]`), type }
+-- csv normalizes a comma-separated string (or an array of strings) into the
+-- comma-separated string form the API expects on the wire.
+local function csv(v)
+    if type(v) == "table" then return table.concat(v, ",") end
+    return v
+end
+
+-- history fetches message history for one number.
+-- GET /v2.2/messages   query: { number (required 10-digit TN), from (Unix
+--   seconds, range start — defaults to now), to (range end — defaults to
+--   24h ago), type = "sms" (default) | "mms" | "dlr" }
+-- Response: { number, type, fromTs, toTs, messages = { { key, value, id } } }.
+-- Each record's value.number is the far-end number as a STRING
+-- (e.g. "2015550123"); for type="dlr" the records carry
+-- destinationNumber/sourceNumber instead of a message body.
 function M:history(opts)
+    opts = opts or {}
     local q = {}
-    if opts then
-        if opts.number then q.number = opts.number end
-        if opts.start  then q.start  = opts.start  end
-        if opts["end"] then q["end"] = opts["end"] end
-        if opts.type   then q.type   = opts.type   end
-    end
+    if opts.number then q.number = opts.number end
+    if opts.from   then q.from   = opts.from   end
+    if opts.to     then q.to     = opts.to     end
+    if opts.type   then q.type   = opts.type   end
     return self._t:request("GET", "/v2.2/messages", q, nil, true)
 end
 
@@ -44,6 +56,8 @@ function M:create_brand(body)
 end
 
 -- campaign_status returns the current 10DLC campaign statuses.
+--   ids (required): comma-separated string (or array) of up to 100
+--     alphanumeric campaign ids, e.g. campaign_status("CAMP002,ABC1234").
 -- Each item is { id, status, numbers, dca }. `status` is one of:
 --   CAMPAIGN_DCA_COMPLETE (ready: carrier review finished, numbers assigned),
 --   CAMPAIGN_DCA_COMPLETE_NO_NUMBERS_ASSIGNED,
@@ -59,11 +73,11 @@ end
 --       unavailable),
 --     carriers         = { { carrier, status, detail, updatedAt } } — each
 --       carrier DCA decision received, latest per carrier. status is ACTIVE,
---       REJECTED, SUSPENDED, UNSUNSPENDED or TERMINATED; detail is the
+--       REJECTED, SUSPENDED, UNSUSPENDED or TERMINATED; detail is the
 --       reviewer's note, as given. }
--- GET /v2.2/messaging/campaigns
-function M:campaign_status()
-    return self._t:request("GET", "/v2.2/messaging/campaigns", nil, nil, true)
+-- GET /v2.2/messaging/campaigns   query: { ids (required) }
+function M:campaign_status(ids)
+    return self._t:request("GET", "/v2.2/messaging/campaigns", { ids = csv(ids) }, nil, true)
 end
 
 -- create_campaign registers a 10DLC campaign with the carrier. The body is
@@ -76,16 +90,14 @@ function M:create_campaign(body)
 end
 
 -- numbers_state returns the messaging state for many numbers at once.
+--   numbers (required): comma-separated string (or array) of up to 1000
+--     10-digit numbers.
 -- The per-number shape matches numbers:get_messaging — including
 -- network ("A"/"B"/"C") and the optional `pending` asynchronous (path C)
 -- enablement job.
 -- GET /v2.2/numbers/messaging   query: { numbers = "2015550123,2015555678" }
 function M:numbers_state(numbers)
-    local q = {}
-    if numbers and #numbers > 0 then
-        q.numbers = table.concat(numbers, ",")
-    end
-    return self._t:request("GET", "/v2.2/numbers/messaging", q, nil, true)
+    return self._t:request("GET", "/v2.2/numbers/messaging", { numbers = csv(numbers) }, nil, true)
 end
 
 -- health returns the account-wide messaging health overview — the same view as
@@ -95,7 +107,7 @@ end
 -- actions that fix it: assign, disable, samples), 14 days of delivery counts
 -- (delivered, failed, blocked as spam, refused because the number is not
 -- enabled), and the alert-email setting. Updated hourly. Fix a number with
--- numbers:set_messaging_campaign / numbers:remove_messaging_campaign.
+-- numbers:assign_campaign / numbers:unassign_campaign.
 -- The spec defines no response schema, so the decoded JSON is returned as-is.
 -- GET /v2.2/messaging/health
 function M:health()

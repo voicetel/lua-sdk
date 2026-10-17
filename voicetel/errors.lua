@@ -8,7 +8,8 @@
 --   err = {
 --     kind        = "rate_limit", -- "bad_request" | "authentication" | ...
 --     status_code = 429,           -- HTTP status; 0 when the transport failed
---     code        = nil,           -- server-supplied error code (string), if any
+--     code        = nil,           -- server-supplied error code (integer per the
+--                                  -- spec's errorResponse envelope), if any
 --     message     = "HTTP 429: ...",
 --     body        = { ... },       -- decoded JSON body or the raw string
 --   }

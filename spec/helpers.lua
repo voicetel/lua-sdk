@@ -61,13 +61,17 @@ function M.ok(data, status)
     }
 end
 
--- err builds a non-2xx response with a JSON error body.
-function M.err(status, message, code, extra)
-    local body = { message = message }
-    if code then body.code = code end
-    if extra then
-        for k, v in pairs(extra) do body[k] = v end
-    end
+-- err builds a non-2xx response carrying the spec's error envelope:
+--   { status = "error", error = { code = <int>, message = <string> } }
+-- `code` defaults to the HTTP status when omitted. An optional `data` table
+-- is attached as a sibling of `error` (matching e.g. aclConflictResponse,
+-- where the payload travels in `data` alongside the error envelope).
+function M.err(status, message, code, data)
+    local body = {
+        status = "error",
+        error  = { code = code or status, message = message },
+    }
+    if data then body.data = data end
     return { status = status, body = body }
 end
 
