@@ -22,8 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Lua + LuaRocks
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4 luarocks
+      - name: Install Lua + LuaRocks + cjson
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4 luarocks lua-cjson
 
       - name: Upload rockspec
         run: luarocks upload --api-key="${{ secrets.LUAROCKS_API_KEY }}" $(ls voicetel-*.rockspec)
