@@ -32,25 +32,85 @@ local BACKOFF_BASE_SEC    = 0.5
 local BACKOFF_CAP_SEC     = 8
 local WRITE_METHODS       = { POST = true, PUT = true, PATCH = true }
 
-local function random_hex(n)
+local function random_bytes(n)
     local f = io.open("/dev/urandom", "rb")
     if f then
         local bytes = f:read(n)
         f:close()
-        if bytes and #bytes == n then
-            local parts = {}
-            for i = 1, #bytes do
-                parts[i] = string.format("%02x", string.byte(bytes, i))
-            end
-            return table.concat(parts)
-        end
+        if bytes and #bytes == n then return bytes end
     end
     math.randomseed(os.time())
     local parts = {}
     for i = 1, n do
-        parts[i] = string.format("%02x", math.random(0, 255))
+        parts[i] = string.char(math.random(0, 255))
     end
     return table.concat(parts)
+end
+
+local function random_hex(n)
+    local bytes = random_bytes(n)
+    local parts = {}
+    for i = 1, #bytes do
+        parts[i] = string.format("%02x", string.byte(bytes, i))
+    end
+    return table.concat(parts)
+end
+
+-- random_uuid returns a random RFC 4122 version-4 UUID string. Used for the
+-- Idempotency-Key header (the Fax API requires the key in this shape).
+-- Written with plain arithmetic (no bitwise operators) so the file loads on
+-- Lua 5.2 (FreeSWITCH mod_lua) as well as 5.3/5.4.
+local function random_uuid()
+    local hex = {}
+    local bytes = random_bytes(16)
+    for i = 1, #bytes do
+        local v = string.byte(bytes, i)
+        if i == 7 then
+            v = (v % 16) + 64   -- version 4: high nibble 0100
+        elseif i == 9 then
+            v = (v % 64) + 128  -- RFC 4122 variant: high bits 10
+        end
+        hex[i] = string.format("%02x", v)
+    end
+    return table.concat(hex, "", 1, 4) .. "-"
+        .. table.concat(hex, "", 5, 6) .. "-"
+        .. table.concat(hex, "", 7, 8) .. "-"
+        .. table.concat(hex, "", 9, 10) .. "-"
+        .. table.concat(hex, "", 11, 16)
+end
+
+-- build_multipart encodes a multipart/form-data body by hand (no dependency
+-- on a multipart library — LuaSocket/http offer none).
+--
+-- mp is:
+--   fields = { { name = "fromNumber", value = "2015550123" }, ... } (ordered)
+--   files  = { { name = "documents", filename = "contract.pdf",
+--                content_type = "application/pdf", data = "<bytes>" }, ... }
+--   boundary = "..." (optional; generated when omitted)
+--
+-- Returns (body, content_type).
+local function build_multipart(mp)
+    local boundary = mp.boundary or ("voicetel-" .. random_hex(16))
+    local parts = {}
+    for _, field in ipairs(mp.fields or {}) do
+        parts[#parts + 1] = "--" .. boundary .. "\r\n"
+            .. 'Content-Disposition: form-data; name="' .. tostring(field.name) .. '"\r\n'
+            .. "\r\n"
+            .. tostring(field.value) .. "\r\n"
+    end
+    for _, file in ipairs(mp.files or {}) do
+        parts[#parts + 1] = "--" .. boundary .. "\r\n"
+            .. 'Content-Disposition: form-data; name="' .. tostring(file.name)
+            .. '"; filename="' .. tostring(file.filename) .. '"\r\n'
+            .. "Content-Type: " .. tostring(file.content_type or "application/octet-stream") .. "\r\n"
+            .. "\r\n"
+            .. file.data .. "\r\n"
+    end
+    if #parts == 0 then
+        return nil, nil, "multipart request needs at least one field or file"
+    end
+    parts[#parts + 1] = "--" .. boundary .. "--\r\n"
+    return table.concat(parts), "multipart/form-data; boundary=" .. boundary, nil
 end
 
 local function url_encode(s)
@@ -138,7 +198,10 @@ end
 
 -- decode_response converts a raw HTTP response into either (result, nil) on
 -- success or (nil, err) on failure. status>=200<300 is treated as success.
-local function decode_response(resp)
+-- When raw_mode is true the success value is the undecoded body string (used
+-- for binary payloads such as GET /v2.2/faxes/{id}/document); error responses
+-- are still parsed as JSON error envelopes.
+local function decode_response(resp, raw_mode)
     local status = resp.status or 0
     local raw = resp.body or ""
     local encoding = http.get_header(resp, "Content-Encoding")
@@ -154,6 +217,11 @@ local function decode_response(resp)
                 "received a gzip-encoded response but the optional zlib module is not installed")
         end
     end
+
+    if raw_mode and status >= 200 and status < 300 then
+        return raw
+    end
+
     local decoded, derr
     if #raw > 0 then
         decoded, derr = json.decode(raw)
@@ -235,11 +303,19 @@ end
 --   query         - table or nil
 --   body          - table (will be JSON-encoded), already-encoded string, or nil
 --   require_auth  - boolean; when true, Authorization header is set/required
+--   opts          - optional table:
+--                     multipart = { fields = {...}, files = {...} } — build a
+--                       multipart/form-data body (overrides `body`)
+--                     idempotency_key = "uuid" — use this Idempotency-Key
+--                       instead of a freshly generated UUID
+--                     raw = true — return the response body bytes undecoded
+--                       (binary downloads) instead of unwrapping JSON
 --
 -- returns (result, err) — result is the unwrapped `data` payload; for 204
--- responses result is `true`. On any failure, result is nil and err is a
--- structured error table.
-function M:request(method, path, query, body, require_auth)
+-- responses result is `true`; with opts.raw it is the raw body string. On any
+-- failure, result is nil and err is a structured error table.
+function M:request(method, path, query, body, require_auth, opts)
+    opts = opts or {}
     if require_auth then
         local key = self.api_key
         if type(key) ~= "string" or key:match("^%s*$") then
@@ -253,7 +329,14 @@ function M:request(method, path, query, body, require_auth)
 
     local url = self.base_url .. path .. build_query(query)
     local raw_body = nil
-    if body ~= nil then
+    local body_content_type = "application/json"
+    if opts.multipart then
+        local mp_err
+        raw_body, body_content_type, mp_err = build_multipart(opts.multipart)
+        if mp_err then
+            return nil, errors.new_transport("failed to build multipart body: " .. mp_err)
+        end
+    elseif body ~= nil then
         if type(body) == "string" then
             raw_body = body
         else
@@ -265,7 +348,10 @@ function M:request(method, path, query, body, require_auth)
         end
     end
 
-    local idempotency_key = WRITE_METHODS[string.upper(method)] and random_hex(16) or nil
+    local idempotency_key = nil
+    if WRITE_METHODS[string.upper(method)] then
+        idempotency_key = opts.idempotency_key or random_uuid()
+    end
 
     local last_err
     for attempt = 0, self.max_retries do
@@ -273,8 +359,8 @@ function M:request(method, path, query, body, require_auth)
             ["Accept"]          = "application/json",
             ["User-Agent"]      = self.user_agent,
         }
-        if HAS_ZLIB then headers["Accept-Encoding"] = "gzip" end
-        if raw_body then headers["Content-Type"] = "application/json" end
+        if HAS_ZLIB and not opts.raw then headers["Accept-Encoding"] = "gzip" end
+        if raw_body then headers["Content-Type"] = body_content_type end
         if require_auth then headers["Authorization"] = "Bearer " .. self.api_key end
         if idempotency_key then headers["Idempotency-Key"] = idempotency_key end
 
@@ -297,7 +383,7 @@ function M:request(method, path, query, body, require_auth)
             if RETRYABLE_STATUSES[resp.status] and attempt < self.max_retries then
                 sleep(backoff_delay(attempt, resp), self.sleep_fn)
             else
-                return decode_response(resp)
+                return decode_response(resp, opts.raw == true)
             end
         end
     end
@@ -306,9 +392,11 @@ end
 
 -- ------------------------------------------------------ exposed helpers ---
 
-M._build_query   = build_query
-M._unwrap        = unwrap
-M._backoff_delay = backoff_delay
-M._url_encode    = url_encode
+M._build_query     = build_query
+M._unwrap          = unwrap
+M._backoff_delay   = backoff_delay
+M._url_encode      = url_encode
+M._build_multipart = build_multipart
+M._random_uuid     = random_uuid
 
 return M

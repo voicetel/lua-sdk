@@ -1,4 +1,4 @@
--- voicetel — official Lua SDK for the VoiceTel REST API (v2.2.20).
+-- voicetel — official Lua SDK for the VoiceTel REST API (v2.2.21).
 --
 -- Designed to run inside FreeSWITCH's mod_lua (Lua 5.2). HTTP transport is
 -- pluggable: by default we use `freeswitch.Curl` when available and fall
@@ -30,6 +30,7 @@ local Account        = require("voicetel.resources.account")
 local Acl            = require("voicetel.resources.acl")
 local Authentication = require("voicetel.resources.authentication")
 local E911           = require("voicetel.resources.e911")
+local Fax            = require("voicetel.resources.fax")
 local Gateways       = require("voicetel.resources.gateways")
 local INumbering     = require("voicetel.resources.inumbering")
 local Lookups        = require("voicetel.resources.lookups")
@@ -109,6 +110,7 @@ function M.new(opts)
     client.acl            = Acl.new(t)
     client.authentication = Authentication.new(t)
     client.e911           = E911.new(t)
+    client.fax            = Fax.new(t)
     client.gateways       = Gateways.new(t)
     client.inumbering     = INumbering.new(t)
     client.lookups        = Lookups.new(t)

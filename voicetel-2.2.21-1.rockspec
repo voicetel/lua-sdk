@@ -1,24 +1,25 @@
--- voicetel-2.2.20-1.rockspec
+-- voicetel-2.2.21-1.rockspec
 package = "voicetel"
-version = "2.2.20-1"
+version = "2.2.21-1"
 
 source = {
     url = "git+https://github.com/voicetel/lua-sdk.git",
-    tag = "v2.2.20",
+    tag = "v2.2.21",
 }
 
 description = {
-    summary  = "Official Lua SDK for the VoiceTel REST API (v2.2.20).",
+    summary  = "Official Lua SDK for the VoiceTel REST API (v2.2.21).",
     detailed = [[
 The official Lua client library for the VoiceTel REST API. Designed for
 FreeSWITCH mod_lua scripting on production switches, with a LuaSocket
 fallback so the same library works outside FreeSWITCH for tests and tools.
 
-Wraps all 10 resource groups and 83 operations of the v2.2.20 API:
-Account, ACL, Authentication, e911, Gateways, iNumbering, Lookups,
+Wraps all 11 resource groups and 88 operations of the v2.2.21 API:
+Account, ACL, Authentication, e911, Fax, Gateways, iNumbering, Lookups,
 Messaging, Numbers, Support. Includes automatic 429/5xx retry with
-Retry-After honoring, structured error types, and the standard
-{ status, data } envelope stripped from every response.
+Retry-After honoring, structured error types, multipart fax sending with
+UUID idempotency keys, binary document download, and the standard
+{ status, data } envelope stripped from every JSON response.
 ]],
     homepage = "https://github.com/voicetel/lua-sdk",
     license  = "MIT",
@@ -48,6 +49,7 @@ build = {
         ["voicetel.resources.acl"]            = "voicetel/resources/acl.lua",
         ["voicetel.resources.authentication"] = "voicetel/resources/authentication.lua",
         ["voicetel.resources.e911"]           = "voicetel/resources/e911.lua",
+        ["voicetel.resources.fax"]            = "voicetel/resources/fax.lua",
         ["voicetel.resources.gateways"]       = "voicetel/resources/gateways.lua",
         ["voicetel.resources.inumbering"]     = "voicetel/resources/inumbering.lua",
         ["voicetel.resources.lookups"]        = "voicetel/resources/lookups.lua",

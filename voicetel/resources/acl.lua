@@ -1,7 +1,8 @@
 -- voicetel.resources.acl — operations under /v2.2/acl.
 --
--- add takes a body of shape `{ acl = { { cidr = "..." }, ... } }`; remove
--- takes the CIDRs as a required comma-separated `cidrs` query parameter.
+-- add and remove both take a body of shape `{ acl = { { cidr = "..." }, ... } }`
+-- (remove accepts the same body as add; the old `cidrs` query parameter is
+-- not read by the live handler).
 
 local M = {}
 M.__index = M
@@ -20,14 +21,23 @@ function M:add(body)
     return self._t:request("POST", "/v2.2/acl", nil, body or {}, true)
 end
 
--- remove removes one or more CIDR entries. Returns 200 with body (NOT 204):
--- { removed = { { cidr = "..." }, ... } }. No request body — the entries to
--- remove go in the required `cidrs` query parameter as a comma-separated
--- list (or an array, which is joined for you).
--- DELETE /v2.2/acl   query: { cidrs = "203.0.113.0/24,203.0.113.1/32" }
-function M:remove(cidrs)
-    if type(cidrs) == "table" then cidrs = table.concat(cidrs, ",") end
-    return self._t:request("DELETE", "/v2.2/acl", { cidrs = cidrs }, nil, true)
+-- remove removes one or more CIDR entries. Takes the SAME body shape as add:
+--   { acl = { { cidr = "203.0.113.0/24" }, ... } }
+-- A plain array of CIDR strings ({ "203.0.113.0/24", ... }) is accepted for
+-- convenience and wrapped for you.
+-- Returns 200 with body (NOT 204): { removed = { { cidr = "..." }, ... } }.
+-- On 409 the error envelope carries a `data` object with the entries that
+-- were removed and the ones that failed (`err.body.data`).
+-- DELETE /v2.2/acl   body: { acl = { { cidr = "203.0.113.0/24" }, ... } }
+function M:remove(body)
+    if type(body) == "table" and body.acl == nil and type(body[1]) == "string" then
+        local acl = {}
+        for _, cidr in ipairs(body) do
+            acl[#acl + 1] = { cidr = cidr }
+        end
+        body = { acl = acl }
+    end
+    return self._t:request("DELETE", "/v2.2/acl", nil, body or {}, true)
 end
 
 return M

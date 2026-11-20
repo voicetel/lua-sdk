@@ -2,7 +2,7 @@
 
 The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/api/v2.2/) — built for **FreeSWITCH `mod_lua`** so you can place CNAM dips, route by LRN, send SMS, and provision e911 directly from your dialplan, with a `socket.http` fallback for offline tests and one-off scripts.
 
-![Version](https://img.shields.io/badge/version-2.2.20-blue)
+![Version](https://img.shields.io/badge/version-2.2.21-blue)
 ![Lua](https://img.shields.io/badge/lua-5.2%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Coverage](https://img.shields.io/badge/coverage-84%25-brightgreen)
@@ -43,6 +43,7 @@ The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/ap
 - **e911** — record provisioning, address validation, lookup, removal.
 - **Gateways** — list, create, update, delete, view bound numbers.
 - **Messaging** — SMS & MMS sending, message history, 10DLC brand and campaign registration, per-number messaging state, and messaging health (account overview, per-number live check, spam-blocked samples, alert-email setting).
+- **Fax** — list fax-capable numbers, send faxes (hand-built `multipart/form-data`, client-generated UUID `Idempotency-Key` so retries never double-send), poll job history & status, download the rendered PDF as raw bytes.
 - **Lookups** — CNAM, carrier & line type, and LRN dips.
 - **iNumbering** — inventory search, coverage queries, number orders, port-in submissions, port-out availability (with the v2.2.14 `localRoutingNumber` / `rateCenterTier` fields — wire names are camelCase and pass through unchanged).
 - **Support** — ticket create / read / update / delete, threaded messages, replies.
@@ -196,6 +197,7 @@ local client = voicetel.new({ api_key = os.getenv("VOICETEL_API_KEY") })
 | ACL              | `client.acl`            | `client.acl:add({ acl = { { cidr = "203.0.113.0/24" } } })`      |
 | Authentication   | `client.authentication` | `client.authentication:update({ authType = voicetel.AUTH_TYPE_LAX })` |
 | e911             | `client.e911`           | `client.e911:validate({ address1 = "1 Main St", ... })`          |
+| Fax              | `client.fax`            | `client.fax:send({ from_number = "...", to_number = "...", documents = { { name = "contract.pdf", content_type = "application/pdf", data = pdf_bytes } } })` |
 | Gateways         | `client.gateways`       | `client.gateways:list()`                                         |
 | iNumbering       | `client.inumbering`     | `client.inumbering:search_inventory({ tnMask = "201555*" })`     |
 | Lookups          | `client.lookups`        | `client.lookups:carrier("2015550123")`                          |
@@ -203,7 +205,7 @@ local client = voicetel.new({ api_key = os.getenv("VOICETEL_API_KEY") })
 | Numbers          | `client.numbers`        | `client.numbers:assign_campaign("2015550123", { campaignId = "ABC1234" })` |
 | Support          | `client.support`        | `client.support:create({ subject = "...", message = "..." })`    |
 
-83 operations in total — every endpoint in the v2.2.20 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
+88 operations in total — every endpoint in the v2.2.21 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
 
 A few spec quirks worth knowing about:
 
@@ -216,6 +218,7 @@ A few spec quirks worth knowing about:
 - **`port_availability`** returns the v2.2.14 fields `localRoutingNumber` and `rateCenterTier` in addition to the older `number`, `portable`, `losingCarrier`, `reason` — the SDK passes the wire (camelCase) field names through unchanged.
 - **Directory listing** PUT/DELETE are accepted at once and applied in the background: both return **HTTP 202** with a body (`status` = `"pending"` / `"removing"`, plus an `orderId`), not 204. Use `get_directory_listing` to poll the state as published.
 - **`carrier`** returns the upstream carrier's own field names inside `carrier` — snake_case `mobile_country_code`, `mobile_network_code`, `error_code` — passed through verbatim.
+- **Fax** `send` hand-builds the `multipart/form-data` body (there is no multipart library on the LuaSocket stack) and requires a client-generated UUID `Idempotency-Key` — supply yours as `idempotency_key`, or let the SDK generate one (resubmitting the same documents with the same key returns the original job instead of sending twice). Documents are PDF/DOC/DOCX by magic bytes, at most 10 files, 8 MiB each and 8 MiB total. `document` returns the raw PDF bytes as a Lua string — write them with `io.open(path, "wb")`. Fax error envelopes may carry an extra `serverTime` field; it is preserved on `err.body`.
 - **DELETE** endpoints generally return 204 No Content — those methods return `true` on success. Three exceptions return 200 with a body and return that data: `client.acl:remove`, `client.numbers:unassign_campaign`, and `client.numbers:bulk_unassign_campaign`.
 
 ## 🚨 Error Handling
