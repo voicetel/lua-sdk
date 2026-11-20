@@ -53,6 +53,84 @@ describe("numbers", function()
         assert.matches("/fax$", m.calls[1].url)
     end)
 
+    -- v2.2.20: directory listing (411) subresource. PUT/DELETE return HTTP
+    -- 202 with a body — accepted at once, applied in the background.
+    it("directory listing: get / set (202) / remove (202)", function()
+        local c, m = helpers.new_client({
+            ok({
+                number   = "2015550123",
+                status   = "listed",
+                eligible = true,
+                listing  = {
+                    type = "B", name = "Acme Corp",
+                    streetNumber = "100", streetName = "Broadway", streetType = "St",
+                    streetSuffix = "", location = "Suite 900",
+                    city = "New York", state = "NY", zip = "10005",
+                    complex = false,
+                },
+                pending = nil,
+            }),
+            ok({ number = "2015550123", status = "pending", orderId = "1026472",
+                 listing = { type = "B", name = "Acme Corp", city = "New York",
+                             state = "NY", zip = "10005" } }, 202),
+            ok({ number = "2015550123", status = "removing", orderId = "1026473" }, 202),
+        })
+        local r = c.numbers:get_directory_listing("2015550123")
+        assert.are.equal("listed", r.status)
+        assert.is_true(r.eligible)
+        assert.are.equal("B", r.listing.type)
+        assert.are.equal("Acme Corp", r.listing.name)
+        assert.are.equal("10005", r.listing.zip)
+        assert.is_false(r.listing.complex)
+
+        local put, perr = c.numbers:set_directory_listing("2015550123", {
+            type = "business", name = "Acme Corp",
+            streetNumber = "100", streetName = "Broadway",
+            city = "New York", state = "NY", zip = "10005",
+        })
+        assert.is_nil(perr)
+        assert.are.equal("pending", put.status)
+        assert.are.equal("1026472", put.orderId)
+
+        local del, derr = c.numbers:remove_directory_listing("2015550123")
+        assert.is_nil(derr)
+        assert.are.equal("removing", del.status)
+        assert.are.equal("1026473", del.orderId)
+
+        assert.matches("/v2.2/numbers/2015550123/directory%-listing$", m.calls[1].url)
+        assert.are.equal("GET",    m.calls[1].method)
+        assert.are.equal("PUT",    m.calls[2].method)
+        assert.are.equal("DELETE", m.calls[3].method)
+        local body = helpers.decode_body(m, 2)
+        assert.are.equal("business", body.type)
+        assert.are.equal("Acme Corp", body.name)
+        assert.are.equal("NY", body.state)
+        assert.are.equal("10005", body.zip)
+    end)
+
+    it("directory listing: delete of a pending add cancels it (202, no orderId)", function()
+        local c = helpers.new_client({
+            ok({ number = "2015550123", status = "not_listed" }, 202),
+        })
+        local r, err = c.numbers:remove_directory_listing("2015550123")
+        assert.is_nil(err)
+        assert.are.equal("not_listed", r.status)
+        assert.is_nil(r.orderId)
+    end)
+
+    it("directory listing: error paths", function()
+        local c = helpers.new_client({
+            helpers.err(402, "balance too low"),
+            helpers.err(409, "number already has a pending change"),
+        })
+        local _, e1 = c.numbers:set_directory_listing("2015550123",
+            { type = "business", name = "Acme Corp", city = "New York", state = "NY", zip = "10005" })
+        assert.are.equal("unknown", e1.kind) -- 402 maps to no dedicated kind
+        assert.are.equal(402, e1.status_code)
+        local _, e2 = c.numbers:remove_directory_listing("2015550123")
+        assert.are.equal("conflict", e2.kind)
+    end)
+
     it("forward: set / remove (204)", function()
         local c, m = helpers.new_client({ ok({}), { status = 204, body = "" } })
         c.numbers:set_forward("2015550123", { destination = 2125550000 })

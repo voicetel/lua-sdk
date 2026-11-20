@@ -23,7 +23,10 @@ end
 -- Response: { number, type, fromTs, toTs, messages = { { key, value, id } } }.
 -- Each record's value.number is the far-end number as a STRING
 -- (e.g. "2015550123"); for type="dlr" the records carry
--- destinationNumber/sourceNumber instead of a message body.
+-- destinationNumber/sourceNumber instead of a message body. Depending on
+-- type, value may also carry: messageText + transactionGUID (+
+-- concatenatedMessage on some receipts) for dlr; attachments (one object per
+-- media file) and subject for mms; ip (origin address) for outbound sms.
 function M:history(opts)
     opts = opts or {}
     local q = {}
@@ -34,8 +37,13 @@ function M:history(opts)
     return self._t:request("GET", "/v2.2/messages", q, nil, true)
 end
 
--- send sends an SMS or MMS. Body must include fromNumber/toNumber/text; the
+-- send sends an SMS or MMS. Body must include fromNumber/toNumber; the
 -- helper here remaps from/to and from_number/to_number for convenience.
+-- `text` is required for SMS and optional for MMS (media-only MMS is valid;
+-- MMS text is at most 2048 chars). `mediaUrls`, when present, must be a
+-- non-empty array of public http(s) URLs and makes the message an MMS.
+-- `subject` is deprecated — accepted for compatibility, but not delivered on
+-- most messaging routes; do not use.
 -- POST /v2.2/messages
 function M:send(body)
     body = body or {}

@@ -31,6 +31,70 @@ describe("messaging", function()
         assert.are.equal("b", body.toNumber)
     end)
 
+    -- v2.2.20 truth fix: text is optional for MMS — a media-only send is
+    -- valid and must not inject a text field onto the wire.
+    it("send allows media-only MMS (no text)", function()
+        local c, m = helpers.new_client({ helpers.ok({ id = "m1", type = "mms", parts = 1 }) })
+        local r, err = c.messaging:send({
+            from_number = "2015550123",
+            to_number   = "2125550123",
+            media_urls  = { "https://example.com/cat.png" },
+        })
+        assert.is_nil(err)
+        assert.are.equal("mms", r.type)
+        local body = helpers.decode_body(m, 1)
+        assert.are.equal("2015550123", body.fromNumber)
+        assert.are.equal("2125550123", body.toNumber)
+        assert.is_nil(body.text)
+        assert.are.same({ "https://example.com/cat.png" }, body.mediaUrls)
+    end)
+
+    it("send remaps media_urls to the wire mediaUrls", function()
+        local c, m = helpers.new_client({ helpers.ok({ id = "x" }) })
+        c.messaging:send({ fromNumber = "a", toNumber = "b", text = "hi",
+                           media_urls = { "https://example.com/x.jpg" } })
+        local body = helpers.decode_body(m, 1)
+        assert.are.same({ "https://example.com/x.jpg" }, body.mediaUrls)
+        assert.is_nil(body.media_urls)
+    end)
+
+    -- v2.2.20: history records carry the full per-type field set in `value`.
+    it("history records surface dlr and mms value fields", function()
+        local c = helpers.new_client({
+            helpers.ok({
+                number = "2015550123", type = "dlr", fromTs = 1, toTs = 2,
+                messages = {
+                    {
+                        id = "d1", key = { "2015550123", 1700000000 },
+                        value = {
+                            destinationNumber = "2125550000",
+                            sourceNumber      = "2015550123",
+                            messageText       = "DELIV",
+                            transactionGUID   = "abc-123",
+                            concatenatedMessage = nil,
+                        },
+                    },
+                    {
+                        id = "m2", key = { "2125550000", 1700000100 },
+                        value = {
+                            number      = "2125550000",
+                            direction   = "in",
+                            message     = "",
+                            subject     = "Hello",
+                            attachments = { { contentFile = "f.jpg", contentType = "image/jpeg" } },
+                        },
+                    },
+                },
+            }),
+        })
+        local r, err = c.messaging:history({ number = "2015550123", type = "dlr" })
+        assert.is_nil(err)
+        assert.are.equal("DELIV", r.messages[1].value.messageText)
+        assert.are.equal("abc-123", r.messages[1].value.transactionGUID)
+        assert.are.equal("Hello", r.messages[2].value.subject)
+        assert.are.equal("image/jpeg", r.messages[2].value.attachments[1].contentType)
+    end)
+
     it("create_brand + campaign_status + create_campaign", function()
         local c, m = helpers.new_client({
             helpers.ok({ result = { status = "Success" } }),

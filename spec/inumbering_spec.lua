@@ -24,6 +24,38 @@ describe("inumbering", function()
         assert.matches("/v2.2/orders$", m.calls[1].url)
     end)
 
+    -- v2.2.20: the 201 response adds `routes` — the route each ordered
+    -- number was placed on — and a route may be any gateway id on the
+    -- account, not just the global 1-9.
+    it("order surfaces routes and accepts a gateway-id route", function()
+        local c, m = helpers.new_client({
+            helpers.ok({
+                orderId        = "ord-1026",
+                amountCharged  = 3.0,
+                numbersOrdered = { "2015550100", "2015550101" },
+                routes         = {
+                    { number = "2015550100", route = 4 },
+                    { number = "2015550101", route = 12 },
+                },
+                failed = {},
+            }, 201),
+        })
+        local r, err = c.inumbering:order({
+            numbers = { "2015550100", { number = "2015550101", route = 12 } },
+        })
+        assert.is_nil(err)
+        assert.are.equal("ord-1026", r.orderId)
+        assert.are.equal(2, #r.routes)
+        assert.are.equal("2015550100", r.routes[1].number)
+        assert.are.equal(4, r.routes[1].route)
+        assert.are.equal("2015550101", r.routes[2].number)
+        assert.are.equal(12, r.routes[2].route)
+
+        local body = helpers.decode_body(m, 1)
+        assert.are.equal("2015550100", body.numbers[1])
+        assert.are.equal(12, body.numbers[2].route)
+    end)
+
     it("ports list + detail + submit", function()
         local c, m = helpers.new_client({
             helpers.ok({ ports = {} }),

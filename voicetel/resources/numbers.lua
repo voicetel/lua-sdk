@@ -22,8 +22,9 @@ end
 
 -- add attaches a TN to the account.
 -- POST /v2.2/numbers   body: { number = "...", route = 4 }
--- `route` is the global route type: 1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID
--- (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
+-- `route` is a gateway id on this account (GET /v2.2/gateways) or a global
+-- route: 1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID (default), 5 T38, 6 VOICEML,
+-- 8 SDN, 9 MOBILE. An unknown route is rejected with 400.
 function M:add(body)
     return self._t:request("POST", "/v2.2/numbers", nil, body or {}, true)
 end
@@ -42,8 +43,9 @@ end
 
 -- move transfers a TN to another account on the same org.
 -- PATCH /v2.2/numbers/{number}   body: { accountId = 1000000002, route = 4 }
--- `route` is the global route type on the destination account: 1 USER,
--- 2 T30, 3 VOICE_BRIDGE, 4 DID (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
+-- `route` is a gateway id on this account (GET /v2.2/gateways) or a global
+-- route on the destination account: 1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID
+-- (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
 function M:move(number, body)
     return self._t:request("PATCH", "/v2.2/numbers/" .. url_encode(number), nil, body or {}, true)
 end
@@ -56,8 +58,9 @@ end
 
 -- set_route updates a TN's outbound route.
 -- PUT /v2.2/numbers/{number}/route   body: { route = 4 }
--- `route` is the global route type: 1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID
--- (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
+-- `route` is a gateway id on this account (GET /v2.2/gateways) or a global
+-- route: 1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID (default), 5 T38, 6 VOICEML,
+-- 8 SDN, 9 MOBILE.
 function M:set_route(number, body)
     return self._t:request("PUT", "/v2.2/numbers/" .. url_encode(number) .. "/route", nil, body or {}, true)
 end
@@ -79,6 +82,49 @@ end
 -- PUT /v2.2/numbers/{number}/lidb
 function M:set_lidb(number, body)
     return self._t:request("PUT", "/v2.2/numbers/" .. url_encode(number) .. "/lidb", nil, body or {}, true)
+end
+
+-- get_directory_listing reads the 411 listing state of a TN as published.
+--   data: { number, status = "listed" | "not_listed" | "pending" |
+--             "removing" | "unavailable",
+--           eligible = true|false|nil,   -- whether a listing can be added
+--           listing = <listing>|nil,     -- the published listing
+--           pending = <listing>|nil }    -- a submitted listing not yet published
+-- A listing is { type = "B"|"R", name | firstName+lastName, streetNumber,
+-- streetName, streetType, streetSuffix, location, city, state, zip, complex }.
+-- Type "B" (business) carries `name`; "R" (residence) carries `firstName` /
+-- `lastName`. All address fields may be empty strings. `complex` marks a
+-- multi-line listing, which is read-only through the API.
+-- GET /v2.2/numbers/{number}/directory-listing
+function M:get_directory_listing(number)
+    return self._t:request("GET",
+        "/v2.2/numbers/" .. url_encode(number) .. "/directory-listing", nil, nil, true)
+end
+
+-- set_directory_listing adds or replaces the 411 listing on a TN.
+--   body: { type = "business" | "residence",   -- required; "B"/"R" also accepted
+--           name = "Acme Corp",                -- required for business (<=60)
+--           firstName = "Jane", lastName = "Doe", -- required for residence (<=30)
+--           streetNumber = "100", streetName = "Broadway",  -- together or neither
+--           streetType = "St", streetSuffix = "NE", location = "Suite 900",
+--           city = "New York", state = "NY", zip = "10005" } -- city/state/zip required
+-- Accepted in background (HTTP 202): data is { number, status = "pending",
+-- orderId, listing } with orderId a string or nil.
+-- PUT /v2.2/numbers/{number}/directory-listing
+function M:set_directory_listing(number, body)
+    return self._t:request("PUT",
+        "/v2.2/numbers/" .. url_encode(number) .. "/directory-listing", nil, body or {}, true)
+end
+
+-- remove_directory_listing removes the 411 listing from a TN, or cancels an
+-- add that has not been applied yet. Accepted in background (HTTP 202): data
+-- is { number, status = "removing", orderId } for a removal, or
+-- { number, status = "not_listed" } (no orderId) when a pending add was
+-- cancelled.
+-- DELETE /v2.2/numbers/{number}/directory-listing
+function M:remove_directory_listing(number)
+    return self._t:request("DELETE",
+        "/v2.2/numbers/" .. url_encode(number) .. "/directory-listing", nil, nil, true)
 end
 
 -- get_fax reads fax-to-email routing.

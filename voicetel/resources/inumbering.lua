@@ -26,10 +26,12 @@ end
 
 -- order purchases new TNs.
 --   body: { numbers = { "2015550123", { number = "...", route = 4 } } }
--- `route` is the global route type for numbers in this order: 1 USER, 2 T30,
--- 3 VOICE_BRIDGE, 4 DID (default), 5 T38, 6 VOICEML, 8 SDN, 9 MOBILE.
+-- `route` is a gateway id on this account (GET /v2.2/gateways) or a global
+-- route: 1 USER, 2 T30, 3 VOICE_BRIDGE, 4 DID (default), 5 T38, 6 VOICEML,
+-- 8 SDN, 9 MOBILE. An unknown route fails the whole order (400).
 -- Response data: { orderId, amountCharged (amount deducted from the account
---   balance), numbersOrdered, failed }
+--   balance), numbersOrdered, routes = { { number, route } } (the route each
+--   ordered number was placed on), failed }
 -- POST /v2.2/orders
 function M:order(body)
     return self._t:request("POST", "/v2.2/orders", nil, body or {}, true)

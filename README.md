@@ -2,7 +2,7 @@
 
 The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/api/v2.2/) — built for **FreeSWITCH `mod_lua`** so you can place CNAM dips, route by LRN, send SMS, and provision e911 directly from your dialplan, with a `socket.http` fallback for offline tests and one-off scripts.
 
-![Version](https://img.shields.io/badge/version-2.2.17-blue)
+![Version](https://img.shields.io/badge/version-2.2.20-blue)
 ![Lua](https://img.shields.io/badge/lua-5.2%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Coverage](https://img.shields.io/badge/coverage-84%25-brightgreen)
@@ -38,12 +38,12 @@ The official Lua client for the [VoiceTel REST API](https://voicetel.com/docs/ap
 - **Envelope-stripping built in** — the standard `{ status = "success", data = ... }` wrapper is peeled off before the response is returned, so you always get the inner payload.
 
 ### 📞 Complete API Coverage
-- **Numbers** — list, get, add, remove, route, translate, CNAM, LIDB, fax, forward, SMS, messaging campaigns, port-out PIN, account moves.
+- **Numbers** — list, get, add, remove, route, translate, CNAM, LIDB, 411 directory listing, fax, forward, SMS, messaging campaigns, port-out PIN, account moves.
 - **Account** — profile, sub-accounts, CDRs, credits, payments, MRC, registration, password recovery.
 - **e911** — record provisioning, address validation, lookup, removal.
 - **Gateways** — list, create, update, delete, view bound numbers.
 - **Messaging** — SMS & MMS sending, message history, 10DLC brand and campaign registration, per-number messaging state, and messaging health (account overview, per-number live check, spam-blocked samples, alert-email setting).
-- **Lookups** — CNAM and LRN dips.
+- **Lookups** — CNAM, carrier & line type, and LRN dips.
 - **iNumbering** — inventory search, coverage queries, number orders, port-in submissions, port-out availability (with the v2.2.14 `localRoutingNumber` / `rateCenterTier` fields — wire names are camelCase and pass through unchanged).
 - **Support** — ticket create / read / update / delete, threaded messages, replies.
 - **ACL** — IP allowlist management with structured 409 conflict bodies.
@@ -198,12 +198,12 @@ local client = voicetel.new({ api_key = os.getenv("VOICETEL_API_KEY") })
 | e911             | `client.e911`           | `client.e911:validate({ address1 = "1 Main St", ... })`          |
 | Gateways         | `client.gateways`       | `client.gateways:list()`                                         |
 | iNumbering       | `client.inumbering`     | `client.inumbering:search_inventory({ tnMask = "201555*" })`     |
-| Lookups          | `client.lookups`        | `client.lookups:lrn("2125550000", "2015550123")`                 |
+| Lookups          | `client.lookups`        | `client.lookups:carrier("2015550123")`                          |
 | Messaging        | `client.messaging`      | `client.messaging:send({ from_number = "...", to_number = "...", text = "..." })` |
 | Numbers          | `client.numbers`        | `client.numbers:assign_campaign("2015550123", { campaignId = "ABC1234" })` |
 | Support          | `client.support`        | `client.support:create({ subject = "...", message = "..." })`    |
 
-79 operations in total — every endpoint in the v2.2.17 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
+83 operations in total — every endpoint in the v2.2.20 spec, with the same method names you'll find in the Go and TypeScript SDKs but in `lower_snake_case` to match Lua idiom.
 
 A few spec quirks worth knowing about:
 
@@ -214,6 +214,8 @@ A few spec quirks worth knowing about:
 - **`campaign_status`** items include a `dca` table with carrier (DCA) review progress: `electionComplete`, `electedCarriers`, and `carriers` (`{ carrier, status, detail, updatedAt }`, latest decision per carrier). `dca` is nil for `CAMPAIGN_INVALID_ID`.
 - **Messaging health** (`health`, `health_alerts`, `set_health_alerts`, `health_check`, `health_samples`) has no response schema in the spec, so each returns the decoded JSON table verbatim — index it directly (e.g. `client.messaging:health().summary`). `health_check` is limited to 30 checks per hour per account.
 - **`port_availability`** returns the v2.2.14 fields `localRoutingNumber` and `rateCenterTier` in addition to the older `number`, `portable`, `losingCarrier`, `reason` — the SDK passes the wire (camelCase) field names through unchanged.
+- **Directory listing** PUT/DELETE are accepted at once and applied in the background: both return **HTTP 202** with a body (`status` = `"pending"` / `"removing"`, plus an `orderId`), not 204. Use `get_directory_listing` to poll the state as published.
+- **`carrier`** returns the upstream carrier's own field names inside `carrier` — snake_case `mobile_country_code`, `mobile_network_code`, `error_code` — passed through verbatim.
 - **DELETE** endpoints generally return 204 No Content — those methods return `true` on success. Three exceptions return 200 with a body and return that data: `client.acl:remove`, `client.numbers:unassign_campaign`, and `client.numbers:bulk_unassign_campaign`.
 
 ## 🚨 Error Handling

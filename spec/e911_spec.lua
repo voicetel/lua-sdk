@@ -14,10 +14,12 @@ describe("e911", function()
         assert.are.equal("POST", m.calls[1].method)
     end)
 
-    it("validate", function()
-        local c, m = helpers.new_client({ helpers.ok({ address = { addressid = 99 } }) })
+    it("validate returns a string addressid", function()
+        local c, m = helpers.new_client({
+            helpers.ok({ address = { addressid = "123a45b678c9d012e3f45a67b890c123" } }),
+        })
         local r = c.e911:validate({ address1 = "1 main", city = "x", state = "NJ", zip = "07030" })
-        assert.are.equal(99, r.address.addressid)
+        assert.are.equal("123a45b678c9d012e3f45a67b890c123", r.address.addressid)
         assert.matches("/v2.2/e911/validations$", m.calls[1].url)
     end)
 
@@ -27,10 +29,30 @@ describe("e911", function()
         assert.matches("/v2.2/e911/2015550123$", m.calls[1].url)
     end)
 
-    it("provision", function()
+    it("provision sends the addressid as a string", function()
         local c, m = helpers.new_client({ helpers.ok({ record = {} }) })
-        c.e911:provision("2015550123", { callername = "ACME", addressid = 99 })
+        c.e911:provision("2015550123",
+            { callername = "ACME", addressid = "123a45b678c9d012e3f45a67b890c123" })
         assert.are.equal("PUT", m.calls[1].method)
+        local body = helpers.decode_body(m, 1)
+        assert.are.equal("123a45b678c9d012e3f45a67b890c123", body.addressid)
+    end)
+
+    -- v2.2.20 truth fix: addressid is a hex STRING on the wire, in both the
+    -- validations response and the provision-by-id request.
+    it("addressid round-trips as a string from validate to provision", function()
+        local c, m = helpers.new_client({
+            helpers.ok({ address = { addressid = "123a45b678c9d012e3f45a67b890c123",
+                                     address1 = "1 MAIN ST", city = "RIVERTON",
+                                     state = "NJ", zip = "07082" } }),
+            helpers.ok({ record = { dn = "12015550123" } }),
+        })
+        local validated, err = c.e911:validate({ address1 = "1 main", city = "x", state = "NJ", zip = "07030" })
+        assert.is_nil(err)
+        c.e911:provision("2015550123", { callername = "ACME", addressid = validated.address.addressid })
+        local body = helpers.decode_body(m, 2)
+        assert.is_string(body.addressid)
+        assert.are.equal("123a45b678c9d012e3f45a67b890c123", body.addressid)
     end)
 
     it("remove returns true on 204", function()

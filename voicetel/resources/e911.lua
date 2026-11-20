@@ -20,6 +20,8 @@ function M:create(body)
 end
 
 -- validate validates an address and returns an addressid for use with provision.
+-- The response address carries `addressid` as a STRING (hex, e.g.
+-- "123a45b678c9d012e3f45a67b890c123") — pass it back verbatim to provision.
 -- POST /v2.2/e911/validations
 function M:validate(body)
     return self._t:request("POST", "/v2.2/e911/validations", nil, body or {}, true)
@@ -32,7 +34,8 @@ function M:get(dn)
 end
 
 -- provision uses a validated addressid to provision e911 on `dn`.
--- PUT /v2.2/e911/{dn}   body: { callername = "...", addressid = 123 }
+-- PUT /v2.2/e911/{dn}   body: { callername = "...", addressid = "123a45b6..." }
+-- (`addressid` is the hex STRING returned by validate.)
 function M:provision(dn, body)
     return self._t:request("PUT", "/v2.2/e911/" .. url_encode(dn), nil, body or {}, true)
 end
