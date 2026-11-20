@@ -94,10 +94,29 @@ describe("fax", function()
             documents = { { name = "x.pdf", data = PDF_BYTES } },
         })
         assert.is_nil(r)
-        assert.are.equal("unknown", err.kind) -- 402 has no dedicated kind
+        assert.are.equal("payment_required", err.kind)
         assert.are.equal(402, err.status_code)
         assert.are.equal("Your account needs a positive balance to send faxes.", err.message)
         assert.are.equal(1795100000, err.body.serverTime)
+    end)
+
+    it("send maps 402 and 413 to dedicated kinds", function()
+        local c = helpers.new_client({
+            helpers.err(402, "Your account needs a positive balance to send faxes."),
+            helpers.err(413, "The documents must total 8 MiB or smaller"),
+        })
+        local _, e1 = c.fax:send({
+            from_number = "2015550123", to_number = "2125550123",
+            documents = { { name = "x.pdf", data = PDF_BYTES } },
+        })
+        assert.are.equal("payment_required", e1.kind)
+        assert.are.equal(402, e1.status_code)
+        local _, e2 = c.fax:send({
+            from_number = "2015550123", to_number = "2125550123",
+            documents = { { name = "big.pdf", data = PDF_BYTES } },
+        })
+        assert.are.equal("request_too_large", e2.kind)
+        assert.are.equal(413, e2.status_code)
     end)
 
     it("history sends the exact spec query names", function()

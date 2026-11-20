@@ -50,8 +50,10 @@ M.DEFAULT_USER_AGENT  = version.DEFAULT_USER_AGENT
 M.is_rate_limit         = errors.is_rate_limit
 M.is_not_found          = errors.is_not_found
 M.is_authentication     = errors.is_authentication
+M.is_payment_required   = errors.is_payment_required
 M.is_permission_denied  = errors.is_permission_denied
 M.is_conflict           = errors.is_conflict
+M.is_request_too_large  = errors.is_request_too_large
 M.is_bad_request        = errors.is_bad_request
 M.is_server             = errors.is_server
 
@@ -59,9 +61,11 @@ M.is_server             = errors.is_server
 M.KIND_UNKNOWN           = errors.KIND_UNKNOWN
 M.KIND_BAD_REQUEST       = errors.KIND_BAD_REQUEST
 M.KIND_AUTHENTICATION    = errors.KIND_AUTHENTICATION
+M.KIND_PAYMENT_REQUIRED  = errors.KIND_PAYMENT_REQUIRED
 M.KIND_PERMISSION_DENIED = errors.KIND_PERMISSION_DENIED
 M.KIND_NOT_FOUND         = errors.KIND_NOT_FOUND
 M.KIND_CONFLICT          = errors.KIND_CONFLICT
+M.KIND_REQUEST_TOO_LARGE = errors.KIND_REQUEST_TOO_LARGE
 M.KIND_RATE_LIMIT        = errors.KIND_RATE_LIMIT
 M.KIND_SERVER            = errors.KIND_SERVER
 

@@ -125,7 +125,7 @@ describe("numbers", function()
         })
         local _, e1 = c.numbers:set_directory_listing("2015550123",
             { type = "business", name = "Acme Corp", city = "New York", state = "NY", zip = "10005" })
-        assert.are.equal("unknown", e1.kind) -- 402 maps to no dedicated kind
+        assert.are.equal("payment_required", e1.kind) -- 402 = insufficient balance
         assert.are.equal(402, e1.status_code)
         local _, e2 = c.numbers:remove_directory_listing("2015550123")
         assert.are.equal("conflict", e2.kind)

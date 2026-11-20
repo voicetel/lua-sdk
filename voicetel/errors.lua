@@ -15,21 +15,25 @@
 --   }
 local M = {}
 
-M.KIND_UNKNOWN          = "unknown"
-M.KIND_BAD_REQUEST      = "bad_request"
-M.KIND_AUTHENTICATION   = "authentication"
+M.KIND_UNKNOWN           = "unknown"
+M.KIND_BAD_REQUEST       = "bad_request"
+M.KIND_AUTHENTICATION    = "authentication"
+M.KIND_PAYMENT_REQUIRED  = "payment_required"
 M.KIND_PERMISSION_DENIED = "permission_denied"
-M.KIND_NOT_FOUND        = "not_found"
-M.KIND_CONFLICT         = "conflict"
-M.KIND_RATE_LIMIT       = "rate_limit"
-M.KIND_SERVER           = "server"
+M.KIND_NOT_FOUND         = "not_found"
+M.KIND_CONFLICT          = "conflict"
+M.KIND_REQUEST_TOO_LARGE = "request_too_large"
+M.KIND_RATE_LIMIT        = "rate_limit"
+M.KIND_SERVER            = "server"
 
 local kind_from_status = {
     [400] = M.KIND_BAD_REQUEST,
     [401] = M.KIND_AUTHENTICATION,
+    [402] = M.KIND_PAYMENT_REQUIRED,
     [403] = M.KIND_PERMISSION_DENIED,
     [404] = M.KIND_NOT_FOUND,
     [409] = M.KIND_CONFLICT,
+    [413] = M.KIND_REQUEST_TOO_LARGE,
     [429] = M.KIND_RATE_LIMIT,
 }
 
@@ -74,8 +78,10 @@ end
 function M.is_rate_limit(err)         return kind_of(err) == M.KIND_RATE_LIMIT end
 function M.is_not_found(err)          return kind_of(err) == M.KIND_NOT_FOUND end
 function M.is_authentication(err)     return kind_of(err) == M.KIND_AUTHENTICATION end
+function M.is_payment_required(err)   return kind_of(err) == M.KIND_PAYMENT_REQUIRED end
 function M.is_permission_denied(err)  return kind_of(err) == M.KIND_PERMISSION_DENIED end
 function M.is_conflict(err)           return kind_of(err) == M.KIND_CONFLICT end
+function M.is_request_too_large(err)  return kind_of(err) == M.KIND_REQUEST_TOO_LARGE end
 function M.is_bad_request(err)        return kind_of(err) == M.KIND_BAD_REQUEST end
 function M.is_server(err)             return kind_of(err) == M.KIND_SERVER end
 
